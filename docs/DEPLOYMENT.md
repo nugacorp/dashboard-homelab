@@ -21,26 +21,82 @@ End state: `http://192.168.1.28:8080`.
 On any cluster node (`pve-dell`, `pve-lenovo1` or `pve-lenovo2`):
 
 ```bash
-pveum user add nuga-dashboard@pve --comment "NUGA HOME dashboard (read-only)"
-pveum acl modify / --users nuga-dashboard@pve --roles PVEAuditor
-pveum user token add nuga-dashboard@pve dashboard --privsep 0
+# 1a. Dedicated user
+pveum user add nuga-dashboard@pve \
+  --comment "NUGA HOME dashboard read-only"
+
+# 1b. Read-only role for the user
+pveum acl modify / \
+  -user nuga-dashboard@pve \
+  -role PVEAuditor
+
+# 1c. Token WITH privilege separation
+pveum user token add nuga-dashboard@pve dashboard \
+  -privsep 1
+
+# 1d. Grant the token its own read-only role
+pveum acl modify / \
+  -token 'nuga-dashboard@pve!dashboard' \
+  -role PVEAuditor
 ```
 
-The last command prints the secret **once**. Copy it straight into the `.env`
-file in step 3.
+Step 1c prints the secret **once**. Copy it straight into the `.env` file in
+step 3.
 
-Verify the token is genuinely read-only:
+### Why `-privsep 1` and not `-privsep 0`
+
+With `-privsep 0` the token inherits **everything the user can do**, now and in
+the future. That makes the token's effective permissions a property of the user
+account rather than of the token, so granting the user an extra role later
+silently widens the token too — with no signal here and no change to this
+repository.
+
+With `-privsep 1` the token starts with **no** privileges and holds only what is
+granted to the token principal in step 1d. Its ceiling is therefore the
+intersection of the user's rights and the token's own ACL: least privilege that
+stays least privilege.
+
+Both ACLs are required. Skipping 1d with `-privsep 1` produces a token that
+authenticates but is authorised for nothing, which surfaces in the dashboard as
+`UPSTREAM_FORBIDDEN`.
+
+### Verify the token is genuinely read-only
+
+Run both. The first must succeed, the second must be refused.
 
 ```bash
-# should succeed
-curl -s -H "Authorization: PVEAPIToken=nuga-dashboard@pve!dashboard=<SECRET>" \
-     https://192.168.1.99:8006/api2/json/version --cacert /etc/pve/pve-root-ca.pem \
-     --resolve pve-dell.dell:8006:192.168.1.99
+TOKEN='PVEAPIToken=nuga-dashboard@pve!dashboard=<SECRET>'
 
-# should fail with 403
-curl -s -X POST -H "Authorization: PVEAPIToken=nuga-dashboard@pve!dashboard=<SECRET>" \
-     https://192.168.1.99:8006/api2/json/nodes/pve-dell/qemu/100/status/stop \
-     --cacert /etc/pve/pve-root-ca.pem --resolve pve-dell.dell:8006:192.168.1.99
+# READ — expect HTTP 200 and a version payload
+curl -sS -o /dev/null -w 'read:  %{http_code}\n' \
+     -H "Authorization: $TOKEN" \
+     --cacert /etc/pve/pve-root-ca.pem \
+     --resolve pve-dell.dell:8006:192.168.1.99 \
+     https://pve-dell.dell:8006/api2/json/version
+
+# WRITE — expect HTTP 403; a 200 here means the token is NOT read-only
+curl -sS -o /dev/null -w 'write: %{http_code}\n' \
+     -X POST -H "Authorization: $TOKEN" \
+     --cacert /etc/pve/pve-root-ca.pem \
+     --resolve pve-dell.dell:8006:192.168.1.99 \
+     https://pve-dell.dell:8006/api2/json/nodes/pve-dell/qemu/100/status/stop
+```
+
+Expected output:
+
+```
+read:  200
+write: 403
+```
+
+Anything else — especially `write: 200` — means the ACL is wrong. Stop and fix
+it before continuing; do not deploy a token that can power off VM 100.
+
+You can confirm the separation is actually in effect with:
+
+```bash
+pveum user token list nuga-dashboard@pve            # privsep column must be 1
+pveum acl list | grep nuga-dashboard                # user AND token entries
 ```
 
 ## 2. Install the Proxmox CA on VM120
@@ -87,6 +143,26 @@ cp .env.example .env
 chmod 600 .env
 ```
 
+### Authentication is mandatory for this deployment
+
+The **application** treats authentication as optional: with the three variables
+below unset it starts in LAN-open mode and logs a warning. That exists so a
+first run on a laptop is frictionless, and so the health endpoints stay usable.
+
+**This deployment does not use that mode.** VM120 serves live infrastructure
+data — node inventory, guest names, storage capacity, Home Assistant entities —
+to anything that can reach port 8080. All three of these are required before
+`docker compose up`:
+
+| Variable | Required on VM120 |
+| --- | --- |
+| `DASHBOARD_USERNAME` | yes |
+| `DASHBOARD_PASSWORD_HASH` | yes |
+| `SESSION_SECRET` | yes (≥ 32 chars) |
+
+They are all-or-nothing: setting one or two of them is a startup error, so a
+partial edit fails loudly instead of quietly leaving the dashboard open.
+
 Generate the auth material:
 
 ```bash
@@ -99,6 +175,9 @@ npm run hash-password -- 'your-dashboard-password'
 openssl rand -base64 48
 ```
 
+Step 5 verifies the result: if `/api/health/ready` reports `"auth": "disabled"`,
+the deployment is not finished.
+
 Edit `.env`:
 
 ```ini
@@ -107,6 +186,8 @@ PORT=8080
 HOST=0.0.0.0
 LOG_LEVEL=info
 UPSTREAM_TIMEOUT_MS=8000
+# Host interface docker publishes on. Empty = all interfaces.
+BIND_ADDRESS=
 
 PVE_API_URL=https://192.168.1.99:8006
 PVE_TOKEN_ID=nuga-dashboard@pve!dashboard
@@ -164,6 +245,9 @@ curl -fsS http://192.168.1.28:8080/api/health/live
 # Readiness — every integration should be "ok"
 curl -fsS http://192.168.1.28:8080/api/health/ready | jq
 
+# Auth must be ENABLED - must print "enabled", never "disabled"
+curl -fsS http://192.168.1.28:8080/api/health/ready | jq -r .auth
+
 # Auth must be enforced
 curl -s -o /dev/null -w '%{http_code}\n' http://192.168.1.28:8080/api/proxmox/cluster   # 401
 
@@ -186,13 +270,18 @@ A healthy `ready` looks like:
 }
 ```
 
+If `auth` reads `"disabled"`, stop: the three `DASHBOARD_*` /
+`SESSION_SECRET` variables did not reach the container. Check `.env` and look
+for the "Dashboard authentication is DISABLED" warning in
+`docker compose logs`, fix it, and restart before using this instance.
+
 ### Reading a failure
 
 | `error.code` | What it means | Where to look |
 | --- | --- | --- |
 | `UPSTREAM_TLS` | CA or hostname wrong | `PVE_CA_CERT_PATH`, `PVE_TLS_SERVERNAME` |
 | `UPSTREAM_AUTH` | Token rejected | `PVE_TOKEN_ID` / `PVE_TOKEN_SECRET`, `HASS_TOKEN` |
-| `UPSTREAM_FORBIDDEN` | Token lacks a privilege | Proxmox ACL — PVEAuditor on `/` |
+| `UPSTREAM_FORBIDDEN` | Token lacks a privilege | With `-privsep 1` the **token** needs its own PVEAuditor grant (step 1d) |
 | `UPSTREAM_UNREACHABLE` | Network/DNS/host down | Routing, firewall, IP changes |
 | `UPSTREAM_TIMEOUT` | Too slow | `UPSTREAM_TIMEOUT_MS`, upstream load |
 
@@ -240,9 +329,27 @@ docker compose up -d --build
 ## Operational notes
 
 - **Do not mount the Docker socket.** The compose file omits it deliberately.
-- **Do not publish port 8080 beyond the LAN** without a reverse proxy that
-  terminates TLS. Once behind one, set `TRUST_PROXY=true` so the `Secure` cookie
-  flag is applied correctly.
+- **Know what the port publish actually does.** `docker compose` publishes
+  `8080` on the host, and by default on *every* host interface (`0.0.0.0`), not
+  only the LAN NIC. Nothing in `compose.yaml` restricts who can reach it — that
+  is the job of the network topology and the host firewall. Two ways to narrow
+  it, in increasing strictness:
+
+  ```bash
+  # a) pin the listener to one interface (set in .env, read by compose)
+  BIND_ADDRESS=192.168.1.28
+
+  # b) or leave it open on the host and filter at the firewall
+  sudo ufw allow from 192.168.1.0/24 to any port 8080 proto tcp
+  sudo ufw deny 8080/tcp
+  ```
+
+  `BIND_ADDRESS` is left unset by default so the first deployment works before
+  VM120 has a DHCP reservation.
+- **Do not expose 8080 to the internet** without a reverse proxy that terminates
+  TLS. Once behind one, set `TRUST_PROXY=true` so the `Secure` cookie flag is
+  applied correctly, and consider `BIND_ADDRESS=127.0.0.1` if the proxy runs on
+  the same host.
 - **Uptime Kuma stays independent.** Different container, different volume,
   port 3001. Nothing in this deployment touches it.
 - **Log rotation** is configured in `compose.yaml` (10 MB × 3).

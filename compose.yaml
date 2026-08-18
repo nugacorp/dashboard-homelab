@@ -4,8 +4,13 @@
 #  - no /var/run/docker.sock mount: that would hand the container root on the host
 #  - no database volume: the app is stateless, sessions are signed cookies
 #  - no privileged mode, no extra capabilities
-#  - the port is published on the LAN only; put a reverse proxy in front before
-#    exposing anything beyond it
+#
+# Exposure: by default the port is published on ALL host interfaces
+# (0.0.0.0:8080). Docker publishes to the host, not to a specific network, so
+# reachability is bounded by the host's own interfaces plus whatever the network
+# and firewall allow — not by anything in this file. Set BIND_ADDRESS in .env to
+# pin the listener to one interface, and put a reverse proxy with TLS in front
+# before exposing this beyond the local network.
 
 services:
   nuga-home:
@@ -24,8 +29,12 @@ services:
       HOST: 0.0.0.0
 
     ports:
-      # host:container - LAN only for now (http://192.168.1.28:8080)
-      - "8080:8080"
+      # bind:host:container. BIND_ADDRESS defaults to every interface so the
+      # first deployment works without extra setup; set it in .env (e.g. to the
+      # VM's LAN address, or 127.0.0.1 when fronted by a proxy on the same host)
+      # to narrow the listener. Left as an env var rather than a literal because
+      # VM120 is still on DHCP.
+      - "${BIND_ADDRESS:-0.0.0.0}:8080:8080"
 
     volumes:
       # Read-only mount for the Proxmox cluster CA so TLS verification can stay on.

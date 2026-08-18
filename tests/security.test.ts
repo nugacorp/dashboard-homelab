@@ -1,3 +1,4 @@
+import { createHmac, randomBytes } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
   createSessionToken,
@@ -8,6 +9,27 @@ import {
   verifyUsername,
 } from '../server/auth.js';
 import { createLogger, redact, registerSecret } from '../server/logger.js';
+
+/**
+ * Builds a JWT-shaped string at runtime.
+ *
+ * The redaction test needs a token that genuinely matches the JWT pattern, but
+ * a complete JWT literal in the source trips secret scanners (and rightly so —
+ * a scanner cannot tell a fixture from a leak by looking at it). Assembling it
+ * here from a synthetic header, payload and HMAC keeps the pattern exact while
+ * leaving nothing credential-shaped in the committed file.
+ *
+ * The signing key is random per run, so the result authenticates to nothing.
+ */
+function buildSyntheticJwt(): string {
+  const b64 = (value: object) => Buffer.from(JSON.stringify(value), 'utf8').toString('base64url');
+  const header = b64({ alg: 'HS256', typ: 'JWT' });
+  const payload = b64({ sub: 'synthetic-fixture', iat: 0 });
+  const signature = createHmac('sha256', randomBytes(32))
+    .update(`${header}.${payload}`)
+    .digest('base64url');
+  return `${header}.${payload}.${signature}`;
+}
 
 describe('password hashing', () => {
   it('produces a verifiable scrypt digest and never stores the password', () => {
@@ -102,8 +124,24 @@ describe('log redaction', () => {
 
   it('masks bearer tokens and JWTs', () => {
     expect(redact('Bearer abcdefghijklmnop')).toContain('[REDACTED]');
-    const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dBjftJeZ4CVPmB92K27uhbUJU1p1r';
-    expect(redact(`token ${jwt}`)).toContain('[REDACTED_JWT]');
+
+    const jwt = buildSyntheticJwt();
+    // Guard the guard: if the generator ever stopped producing a real JWT
+    // shape, the assertion below would pass vacuously and the regex would go
+    // untested. A Home Assistant long-lived token has exactly this shape.
+    expect(jwt.startsWith('eyJ')).toBe(true);
+    expect(jwt.split('.')).toHaveLength(3);
+    for (const segment of jwt.split('.')) {
+      expect(segment.length).toBeGreaterThanOrEqual(13);
+      expect(segment).toMatch(/^[A-Za-z0-9_-]+$/);
+    }
+
+    const out = redact(`authorization header carried ${jwt} inline`);
+    expect(out).toContain('[REDACTED_JWT]');
+    expect(out).not.toContain(jwt);
+    // Surrounding text must survive: redaction replaces the token, not the line.
+    expect(out).toContain('authorization header carried');
+    expect(out).toContain('inline');
   });
 
   it('applies redaction to the emitted log line', () => {

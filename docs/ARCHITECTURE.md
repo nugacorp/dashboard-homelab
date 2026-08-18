@@ -126,8 +126,10 @@ Two conventions carry most of the weight:
 
 ## Read-only posture
 
-The Proxmox token is expected to hold `PVEAuditor`. The services issue GET and
-nothing else, and `tests/no-fake-data.test.ts` asserts statically that no
+The Proxmox token is created with privilege separation on (`-privsep 1`) and
+granted `PVEAuditor` on `/` as a token principal in its own right, so its
+ceiling does not move when the user account gains a role. The services issue
+GET and nothing else, and `tests/no-fake-data.test.ts` asserts statically that no
 `POST`/`PUT`/`DELETE` appears in either service file.
 
 Mutating routes still exist — and answer `403 NOT_ENABLED`:

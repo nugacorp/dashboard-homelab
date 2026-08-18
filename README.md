@@ -113,6 +113,7 @@ Full annotated list in `.env.example`. Summary:
 | --- | --- | --- |
 | `PORT`, `HOST`, `LOG_LEVEL` | no | Runtime basics (defaults 8080 / 0.0.0.0 / info) |
 | `UPSTREAM_TIMEOUT_MS` | no | Hard timeout per upstream call (default 8000) |
+| `BIND_ADDRESS` | no | Host interface compose publishes on (default: all) |
 | `PVE_API_URL`, `PVE_TOKEN_ID`, `PVE_TOKEN_SECRET` | together | Proxmox, read-only token |
 | `PVE_CA_CERT_PATH` | recommended | Cluster CA so TLS verification stays on |
 | `PVE_TLS_SERVERNAME` | when using an IP | Hostname to validate the certificate against |
@@ -140,14 +141,29 @@ to something and report it as working.
    strings.
 7. Frontend and backend are same-origin. There is no CORS middleware and no
    wildcard origin.
-8. Optional local login: scrypt password hash, HMAC-signed HttpOnly cookie with
+8. Local login: scrypt password hash, HMAC-signed HttpOnly cookie with
    `SameSite=Lax`, and a per-IP login throttle. No session database.
-9. Proxmox and Home Assistant are strictly read-only in this release.
+9. Proxmox and Home Assistant are strictly read-only in this release. The
+   Proxmox token uses privilege separation (`-privsep 1`) with its own
+   `PVEAuditor` grant, so widening the user later does not widen the token.
 10. The Docker socket is never mounted.
 
+### Authentication: optional in the app, required for the real deployment
+
 If `DASHBOARD_USERNAME` / `DASHBOARD_PASSWORD_HASH` / `SESSION_SECRET` are not
-set, the dashboard runs open on the LAN and logs a warning at boot. Do not
-expose it beyond the LAN in that state.
+set, the application starts open and logs a warning at boot. That mode exists
+for a first run on a laptop, not for a host serving live infrastructure data.
+
+`docs/DEPLOYMENT.md` treats all three as **mandatory** for VM120, and step 5
+fails the deployment if `/api/health/ready` reports `"auth": "disabled"`.
+
+### What publishing the port does
+
+`compose.yaml` publishes `8080` on the host, by default on every host interface.
+Docker publishes to the host rather than to a particular network, so who can
+reach it is decided by your network and firewall, not by this repository. Set
+`BIND_ADDRESS` in `.env` to pin the listener to a single address (for example
+the VM's LAN IP, or `127.0.0.1` behind a local reverse proxy).
 
 ## Setting up Proxmox
 
@@ -155,11 +171,20 @@ Create a dedicated read-only token — do not reuse the one Hermes already has:
 
 ```bash
 # On any cluster node
-pveum user add nuga-dashboard@pve
-pveum acl modify / --users nuga-dashboard@pve --roles PVEAuditor
-pveum user token add nuga-dashboard@pve dashboard --privsep 0
+pveum user add nuga-dashboard@pve --comment "NUGA HOME dashboard read-only"
+pveum acl modify / -user nuga-dashboard@pve -role PVEAuditor
+
+# Privilege separation ON: the token starts with no rights and gets only what
+# is granted to the token principal, so widening the user later does not
+# silently widen the token.
+pveum user token add nuga-dashboard@pve dashboard -privsep 1
+pveum acl modify / -token 'nuga-dashboard@pve!dashboard' -role PVEAuditor
 # Copy the printed secret straight into .env on VM120; it is shown once.
 ```
+
+Verify before deploying: a `GET /api2/json/version` must return 200 and a
+`POST .../status/stop` must return 403. `docs/DEPLOYMENT.md` has the exact
+commands.
 
 Then copy the cluster CA so TLS can be verified:
 

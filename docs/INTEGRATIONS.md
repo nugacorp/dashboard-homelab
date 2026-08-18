@@ -16,7 +16,9 @@ Common rules:
 
 **Config:** `PVE_API_URL`, `PVE_TOKEN_ID`, `PVE_TOKEN_SECRET`,
 `PVE_CA_CERT_PATH`, `PVE_TLS_SERVERNAME`
-**Privilege required:** `PVEAuditor` on `/`
+**Privilege required:** `PVEAuditor` on `/`, granted to **both** the user and
+the token principal, with the token created using `-privsep 1`. See
+`docs/DEPLOYMENT.md` step 1 for the exact commands and the read/write check.
 
 ### Endpoints consumed
 
