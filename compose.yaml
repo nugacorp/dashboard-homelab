@@ -1,0 +1,62 @@
+# NUGA HOME - deployment on VM120 (nuga-ops).
+#
+# Notes on what is deliberately absent:
+#  - no /var/run/docker.sock mount: that would hand the container root on the host
+#  - no database volume: the app is stateless, sessions are signed cookies
+#  - no privileged mode, no extra capabilities
+#
+# Exposure: by default the port is published on ALL host interfaces
+# (0.0.0.0:8080). Docker publishes to the host, not to a specific network, so
+# reachability is bounded by the host's own interfaces plus whatever the network
+# and firewall allow — not by anything in this file. Set BIND_ADDRESS in .env to
+# pin the listener to one interface, and put a reverse proxy with TLS in front
+# before exposing this beyond the local network.
+
+services:
+  nuga-home:
+    build: .
+    image: nuga-home-dashboard:latest
+    container_name: nuga-home
+    restart: unless-stopped
+
+    # Secrets live here, outside the image and outside git.
+    env_file:
+      - .env
+
+    environment:
+      NODE_ENV: production
+      PORT: "8080"
+      HOST: 0.0.0.0
+
+    ports:
+      # bind:host:container. BIND_ADDRESS defaults to every interface so the
+      # first deployment works without extra setup; set it in .env (e.g. to the
+      # VM's LAN address, or 127.0.0.1 when fronted by a proxy on the same host)
+      # to narrow the listener. Left as an env var rather than a literal because
+      # VM120 is still on DHCP.
+      - "${BIND_ADDRESS:-0.0.0.0}:8080:8080"
+
+    volumes:
+      # Read-only mount for the Proxmox cluster CA so TLS verification can stay on.
+      # Create /etc/nuga-home on the host and copy pve-root-ca.pem into it.
+      - /etc/nuga-home:/etc/nuga-home:ro
+
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/health/live"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+    security_opt:
+      - no-new-privileges:true
+
+    read_only: true
+    tmpfs:
+      - /tmp
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

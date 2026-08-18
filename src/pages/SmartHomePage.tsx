@@ -1,251 +1,259 @@
-import React, { useState } from 'react';
-import {
-  Home,
-  Lightbulb,
-  Lock,
-  Unlock,
-  Thermometer,
-  Droplets,
-  Power,
-  Tv,
-  Users,
-  Shield,
-  Sun
-} from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Home, Search, Lock, Lightbulb, Gauge, ToggleRight, Info } from 'lucide-react';
+import type { HomeAssistantEntityDto } from '@shared/api';
 import { useHomelab } from '../context/HomelabContext';
+import { useResource } from '../hooks/useResource';
 import { StatusBadge } from '../components/ui/StatusBadge';
+import { ResourceGate } from '../components/common/ResourceGate';
+import { formatRelative, formatNumber } from '../lib/format';
 
+/**
+ * Home Assistant, read-only.
+ *
+ * No toggles, no setpoints, no lock buttons: the backend has no write path to
+ * Home Assistant in v1, so offering a control here could only ever produce a
+ * fake success. The banner says so explicitly.
+ *
+ * This installation currently exposes only system entities - no Zigbee
+ * coordinator, no physical devices - and the empty state is written for that.
+ */
 export const SmartHomePage: React.FC = () => {
-  const { smartHome, rooms, toggleLight, setClimateTemp, toggleLock } = useHomelab();
-  const [selectedRoomId, setSelectedRoomId] = useState<string>('ALL');
+  const { homeAssistant, session } = useHomelab();
+  const canFetch = !session.loading && (!session.authRequired || session.authenticated);
 
-  const displayedRooms = selectedRoomId === 'ALL' ? rooms : rooms.filter(r => r.id === selectedRoomId);
+  const entities = useResource<HomeAssistantEntityDto[]>('/home-assistant/entities', 'homeAssistant', {
+    pollMs: 30_000,
+    enabled: canFetch,
+    isEmpty: (d) => d.length === 0,
+  });
+
+  const [search, setSearch] = useState('');
+  const [domainFilter, setDomainFilter] = useState('ALL');
+
+  const domains = useMemo(() => {
+    const summary = homeAssistant.data;
+    if (!summary) return ['ALL'];
+    return ['ALL', ...summary.domains.slice(0, 12).map((d) => d.domain)];
+  }, [homeAssistant.data]);
+
+  const filtered = useMemo(() => {
+    const list = entities.data ?? [];
+    const q = search.toLowerCase().trim();
+    return list.filter((e) => {
+      const matchSearch =
+        q === '' ||
+        e.entityId.toLowerCase().includes(q) ||
+        e.friendlyName.toLowerCase().includes(q);
+      const matchDomain = domainFilter === 'ALL' || e.domain === domainFilter;
+      return matchSearch && matchDomain;
+    });
+  }, [entities.data, search, domainFilter]);
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Top Banner */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 backdrop-blur-md">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-amber-500/20 p-2.5 text-amber-400">
-              <Home className="h-6 w-6" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="font-mono text-lg font-bold text-slate-100">Home Assistant OS (HAOS)</h2>
-                <StatusBadge status="Connected" size="sm" />
-              </div>
-              <p className="text-xs text-slate-400">
-                Core 2024.3.1 • Zigbee2MQTT & Z-Wave JS Mesh • {smartHome.totalDevices} Entities Tracked
-              </p>
-            </div>
-          </div>
+      <ResourceGate
+        resource={homeAssistant}
+        name="Home Assistant"
+        notConfiguredDescription="El backend no tiene credenciales de Home Assistant."
+        notConfiguredRequirement="Define HASS_URL (esta instalación responde en el puerto 80, no en 8123) y HASS_TOKEN."
+      >
+        {(summary) => {
+          const physical =
+            summary.categories.lights +
+            summary.categories.switches +
+            summary.categories.climate +
+            summary.categories.locks +
+            summary.categories.cameras +
+            summary.categories.mediaPlayers;
 
-          <div className="flex items-center gap-3 font-mono text-xs">
-            <div className="rounded-xl border border-slate-800 bg-slate-950/60 px-3.5 py-2">
-              <span className="text-slate-400">Lights Active:</span>{' '}
-              <span className="font-bold text-amber-400">
-                {smartHome.lightsOn} / {smartHome.lightsTotal}
-              </span>
-            </div>
-            <div className="rounded-xl border border-slate-800 bg-slate-950/60 px-3.5 py-2">
-              <span className="text-slate-400">Perimeter:</span>{' '}
-              <span className="font-bold text-emerald-400">
-                {smartHome.doorsLocked ? 'All Locked' : 'Unlocked'}
-              </span>
-            </div>
-          </div>
-        </div>
+          return (
+            <>
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 backdrop-blur-md">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-xl bg-amber-500/20 p-2.5 text-amber-400">
+                      <Home className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h2 className="font-mono text-lg font-bold text-slate-100">Home Assistant</h2>
+                        <StatusBadge status="connected" size="sm" />
+                      </div>
+                      <p className="text-xs text-slate-400">
+                        {summary.version ? `Core ${summary.version}` : 'Versión no reportada'}
+                        {summary.locationName ? ` · ${summary.locationName}` : ''} ·{' '}
+                        {formatNumber(summary.entitiesTotal)} entidades
+                      </p>
+                    </div>
+                  </div>
 
-        {/* Room Filter Bar */}
-        <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-800/80 pt-3">
-          <button
-            onClick={() => setSelectedRoomId('ALL')}
-            className={`rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-all ${
-              selectedRoomId === 'ALL'
-                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                : 'bg-slate-950/60 text-slate-400 hover:text-slate-200 border border-slate-800'
-            }`}
-          >
-            All Rooms ({rooms.length})
-          </button>
-          {rooms.map(room => (
-            <button
-              key={room.id}
-              onClick={() => setSelectedRoomId(room.id)}
-              className={`flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-all ${
-                selectedRoomId === room.id
-                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                  : 'bg-slate-950/60 text-slate-400 hover:text-slate-200 border border-slate-800'
-              }`}
-            >
-              <span>{room.name}</span>
-              <span className="font-mono text-[10px] text-slate-400">({room.temperatureC}°C)</span>
-            </button>
-          ))}
-        </div>
-      </div>
+                  <div className="flex flex-wrap items-center gap-3 font-mono text-xs">
+                    <div className="rounded-xl border border-slate-800 bg-slate-950/60 px-3.5 py-2">
+                      <span className="text-slate-400">No disponibles:</span>{' '}
+                      <span
+                        className={`font-bold ${
+                          summary.entitiesUnavailable > 0 ? 'text-amber-400' : 'text-emerald-400'
+                        }`}
+                      >
+                        {summary.entitiesUnavailable}
+                      </span>
+                    </div>
+                    <div className="rounded-xl border border-slate-800 bg-slate-950/60 px-3.5 py-2">
+                      <span className="text-slate-400">Desconocidas:</span>{' '}
+                      <span className="font-bold text-slate-200">{summary.entitiesUnknown}</span>
+                    </div>
+                  </div>
+                </div>
 
-      {/* Room-by-Room Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {displayedRooms.map(room => (
-          <div
-            key={room.id}
-            className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 backdrop-blur-md space-y-4"
-          >
-            {/* Room Header */}
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div>
-                <h3 className="font-mono text-sm font-bold text-slate-100">{room.name}</h3>
-                <div className="flex items-center gap-2 text-xs text-slate-400 mt-0.5">
-                  <span className="flex items-center gap-1">
-                    <Thermometer className="h-3.5 w-3.5 text-cyan-400" />
-                    {room.temperatureC}°C
-                  </span>
-                  <span>•</span>
-                  <span className="flex items-center gap-1">
-                    <Droplets className="h-3.5 w-3.5 text-blue-400" />
-                    {room.humidityPct}% RH
+                <div className="mt-4 flex items-start gap-1.5 rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-2">
+                  <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-500" />
+                  <span className="font-mono text-[11px] leading-relaxed text-slate-400">
+                    Control no habilitado — NUGA HOME solo lee estados. No hay ninguna ruta de
+                    escritura hacia Home Assistant en esta versión: encender luces, abrir cerraduras
+                    o cambiar el clima se hará desde la propia app de Home Assistant.
                   </span>
                 </div>
               </div>
 
-              <div className="flex items-center gap-1 rounded-lg bg-slate-950/60 px-2 py-1 text-xs font-mono">
-                <Lightbulb className={`h-3.5 w-3.5 ${room.lightsActive > 0 ? 'text-amber-400 fill-amber-400' : 'text-slate-600'}`} />
-                <span className="text-slate-200">{room.lightsActive} ON</span>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+                <CategoryTile icon={Lightbulb} label="Luces" value={summary.categories.lights} color="text-amber-400" />
+                <CategoryTile icon={ToggleRight} label="Switches" value={summary.categories.switches} color="text-emerald-400" />
+                <CategoryTile icon={Gauge} label="Sensores" value={summary.categories.sensors} color="text-cyan-400" />
+                <CategoryTile icon={Lock} label="Cerraduras" value={summary.categories.locks} color="text-blue-400" />
+                <CategoryTile icon={Home} label="Climatización" value={summary.categories.climate} color="text-rose-400" />
+              </div>
+
+              {physical === 0 && (
+                <div className="flex items-start gap-2 rounded-2xl border border-dashed border-slate-800 bg-slate-900/40 p-5">
+                  <Info className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
+                  <div>
+                    <h3 className="font-mono text-sm font-bold text-slate-200">
+                      No hay dispositivos configurados
+                    </h3>
+                    <p className="mt-1 text-xs leading-relaxed text-slate-400">
+                      Home Assistant responde correctamente, pero todavía no tiene dispositivos
+                      físicos: no hay coordinador Zigbee, luces, enchufes, cámaras ni sensores
+                      inteligentes emparejados. Las entidades listadas abajo son de sistema.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </>
+          );
+        }}
+      </ResourceGate>
+
+      <ResourceGate
+        resource={entities}
+        name="Entidades de Home Assistant"
+        notConfiguredDescription="Home Assistant no está configurado."
+        emptyDescription="Home Assistant no devolvió ninguna entidad."
+      >
+        {() => (
+          <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/60 backdrop-blur-md">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 bg-slate-950/80 p-4">
+              <h3 className="font-mono text-xs font-bold uppercase tracking-wider text-slate-200">
+                Entidades ({filtered.length})
+              </h3>
+
+              <div className="relative min-w-[220px]">
+                <Search className="absolute left-3 top-2 h-3.5 w-3.5 text-slate-500" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Buscar entity_id o nombre…"
+                  className="w-full rounded-lg border border-slate-800 bg-slate-950/80 py-1.5 pl-8 pr-3 text-xs text-slate-200 placeholder-slate-500 focus:border-amber-500 focus:outline-none"
+                />
               </div>
             </div>
 
-            {/* Devices in this Room */}
-            <div className="space-y-2.5">
-              {room.devices.map(device => {
-                if (device.domain === 'light') {
-                  const isOn = Boolean(device.state);
-                  return (
-                    <div
-                      key={device.id}
-                      className={`flex items-center justify-between rounded-xl border p-3 transition-all ${
-                        isOn
-                          ? 'border-amber-500/30 bg-amber-950/20'
-                          : 'border-slate-800/80 bg-slate-950/40'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <div
-                          className={`rounded-lg p-2 ${
-                            isOn ? 'bg-amber-500/20 text-amber-300' : 'bg-slate-800 text-slate-500'
-                          }`}
-                        >
-                          <Lightbulb className="h-4 w-4" />
-                        </div>
-                        <div>
-                          <div className="font-mono text-xs font-bold text-slate-200">{device.name}</div>
-                          <div className="text-[10px] text-slate-400">
-                            {isOn ? `Brightness: ${device.attributes.brightness || 75}%` : 'Turned off'}
-                          </div>
-                        </div>
-                      </div>
+            <div className="flex flex-wrap gap-1.5 border-b border-slate-800/60 px-4 py-2.5">
+              {domains.map((domain) => (
+                <button
+                  key={domain}
+                  onClick={() => setDomainFilter(domain)}
+                  className={`rounded-md px-2.5 py-1 font-mono text-[11px] transition-colors ${
+                    domainFilter === domain
+                      ? 'border border-amber-500/30 bg-amber-500/15 font-bold text-amber-300'
+                      : 'border border-slate-800 bg-slate-950/60 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {domain === 'ALL' ? 'todos' : domain}
+                </button>
+              ))}
+            </div>
 
-                      <button
-                        onClick={() => toggleLight(room.id, device.id)}
-                        className={`rounded-xl px-3 py-1.5 text-xs font-mono font-bold transition-all ${
-                          isOn
-                            ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/30'
-                            : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200'
-                        }`}
-                      >
-                        {isOn ? 'ON' : 'OFF'}
-                      </button>
-                    </div>
-                  );
-                }
-
-                if (device.domain === 'climate') {
-                  const currentTemp = device.attributes.currentTemperature || room.temperatureC;
-                  const targetTemp = device.attributes.targetTemperature || 21.5;
-
-                  return (
-                    <div
-                      key={device.id}
-                      className="rounded-xl border border-cyan-500/30 bg-cyan-950/10 p-3 space-y-2"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Thermometer className="h-4 w-4 text-cyan-400" />
-                          <span className="font-mono text-xs font-bold text-slate-200">{device.name}</span>
-                        </div>
-                        <span className="font-mono text-xs text-cyan-300 font-bold">{targetTemp}°C</span>
-                      </div>
-
-                      <div className="flex items-center justify-between pt-1">
-                        <span className="text-[11px] text-slate-400">Set Target Temp:</span>
-                        <div className="flex items-center gap-2 font-mono">
-                          <button
-                            onClick={() => setClimateTemp(room.id, device.id, +(targetTemp - 0.5).toFixed(1))}
-                            className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-0.5 text-xs font-bold text-slate-200 hover:bg-slate-700"
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="border-b border-slate-800 bg-slate-950 font-mono text-slate-400">
+                  <tr>
+                    <th className="px-4 py-3">Entidad</th>
+                    <th className="px-4 py-3">Dominio</th>
+                    <th className="px-4 py-3">Estado</th>
+                    <th className="px-4 py-3">Clase</th>
+                    <th className="px-4 py-3">Último cambio</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {filtered.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-10 text-center text-slate-500">
+                        Ninguna entidad coincide con el filtro.
+                      </td>
+                    </tr>
+                  ) : (
+                    filtered.map((entity) => (
+                      <tr key={entity.entityId} className="hover:bg-slate-800/40">
+                        <td className="px-4 py-3">
+                          <div className="font-semibold text-slate-200">{entity.friendlyName}</div>
+                          <div className="font-mono text-[10px] text-slate-500">{entity.entityId}</div>
+                        </td>
+                        <td className="px-4 py-3 font-mono text-slate-400">{entity.domain}</td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`font-mono ${
+                              entity.available ? 'text-slate-200' : 'text-amber-400'
+                            }`}
                           >
-                            -
-                          </button>
-                          <span className="text-xs font-bold text-slate-100">{targetTemp}°C</span>
-                          <button
-                            onClick={() => setClimateTemp(room.id, device.id, +(targetTemp + 0.5).toFixed(1))}
-                            className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-0.5 text-xs font-bold text-slate-200 hover:bg-slate-700"
-                          >
-                            +
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                }
-
-                if (device.domain === 'lock') {
-                  const isLocked = device.attributes.locked ?? true;
-                  return (
-                    <div
-                      key={device.id}
-                      className={`flex items-center justify-between rounded-xl border p-3 ${
-                        isLocked
-                          ? 'border-emerald-500/30 bg-emerald-950/20'
-                          : 'border-amber-500/30 bg-amber-950/20'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <div
-                          className={`rounded-lg p-2 ${
-                            isLocked ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'
-                          }`}
-                        >
-                          {isLocked ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
-                        </div>
-                        <div>
-                          <div className="font-mono text-xs font-bold text-slate-200">{device.name}</div>
-                          <div className="text-[10px] text-slate-400">
-                            {isLocked ? 'Locked & Secured' : 'Unlocked (Door Open)'}
-                          </div>
-                        </div>
-                      </div>
-
-                      <button
-                        onClick={() => toggleLock(room.id, device.id)}
-                        className={`rounded-xl px-3 py-1.5 text-xs font-mono font-bold transition-all ${
-                          isLocked
-                            ? 'bg-emerald-600 text-white shadow-md'
-                            : 'bg-amber-600 text-slate-950 font-bold'
-                        }`}
-                      >
-                        {isLocked ? 'LOCKED' : 'UNLOCKED'}
-                      </button>
-                    </div>
-                  );
-                }
-
-                return null;
-              })}
+                            {entity.state}
+                            {entity.unit ? ` ${entity.unit}` : ''}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 font-mono text-slate-500">
+                          {entity.deviceClass ?? '—'}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-slate-500">
+                          {formatRelative(entity.lastChanged)}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
-        ))}
-      </div>
+        )}
+      </ResourceGate>
     </div>
   );
 };
+
+const CategoryTile: React.FC<{
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: number;
+  color: string;
+}> = ({ icon: Icon, label, value, color }) => (
+  <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+    <div className="flex items-center gap-1.5 text-xs text-slate-400">
+      <Icon className={`h-3.5 w-3.5 ${color}`} />
+      <span>{label}</span>
+    </div>
+    <div
+      className={`mt-1.5 font-mono text-2xl font-bold ${value === 0 ? 'text-slate-600' : 'text-slate-100'}`}
+    >
+      {value}
+    </div>
+  </div>
+);

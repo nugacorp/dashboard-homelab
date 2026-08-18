@@ -1,84 +1,90 @@
 import React, { useState } from 'react';
-import {
-  Search,
-  Bell,
-  Sparkles,
-  ShieldCheck,
-  SlidersHorizontal,
-  Wifi,
-  ExternalLink,
-  Menu
-} from 'lucide-react';
-import { useHomelab, NavigationPage } from '../../context/HomelabContext';
-import { StatusBadge } from '../ui/StatusBadge';
+import { Search, Bell, Sparkles, Menu, Server, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { useHomelab, type NavigationPage } from '../../context/HomelabContext';
+import { formatClock, formatPct } from '../../lib/format';
 
+const PAGE_TITLES: Record<NavigationPage, string> = {
+  overview: 'NOC Overview',
+  infrastructure: 'Infraestructura',
+  proxmox: 'Proxmox VE',
+  vms: 'Máquinas virtuales',
+  containers: 'Contenedores LXC',
+  network: 'Red',
+  unifi: 'UniFi',
+  starlink: 'Starlink',
+  'smart-home': 'Smart Home',
+  cameras: 'Cámaras',
+  storage: 'Almacenamiento',
+  services: 'Servicios',
+  energy: 'Energía',
+  hermes: 'Hermes AI',
+  alerts: 'Alertas',
+  logs: 'Logs',
+  settings: 'Ajustes',
+};
+
+/**
+ * Top bar.
+ *
+ * The old header advertised a health score and a live Starlink pill, both
+ * fabricated. It now shows the real cluster state and the count of integrations
+ * currently reporting a failure.
+ */
 export const Header: React.FC = () => {
   const {
     currentPage,
     setCurrentPage,
-    overview,
-    alerts,
-    acknowledgeAlert,
+    cluster,
+    ready,
     setIsHermesDrawerOpen,
     setIsCommandPaletteOpen,
     isMobileMenuOpen,
     setIsMobileMenuOpen,
-    starlink
   } = useHomelab();
 
   const [showNotifications, setShowNotifications] = useState(false);
-  const activeAlerts = alerts.filter(a => a.status !== 'resolved');
 
-  const pageTitles: Record<NavigationPage, string> = {
-    overview: 'NOC Overview',
-    infrastructure: 'Infrastructure & Cluster',
-    proxmox: 'Proxmox VE Nodes & VMs',
-    vms: 'Virtual Machines',
-    containers: 'LXC & Docker Containers',
-    network: 'UniFi Network & Topology',
-    unifi: 'UniFi SDN Controller',
-    starlink: 'Starlink Telemetry',
-    'smart-home': 'Smart Home & Rooms',
-    cameras: 'Security Cameras & Frigate',
-    storage: 'ZFS Storage Pools & Immich',
-    services: 'Homelab Services Catalog',
-    energy: 'Power & Smart Energy Grid',
-    hermes: 'Hermes AI Assistant',
-    alerts: 'Central Alert Manager',
-    logs: 'Live Journal & Syslog Stream',
-    settings: 'System Settings & Integrations'
-  };
+  const failing = ready.data
+    ? (Object.entries(ready.data.integrations) as [string, { state: string; detail: string }][])
+        .filter(([, health]) => health.state === 'unavailable')
+    : [];
+
+  const clusterLabel = (() => {
+    if (cluster.phase === 'ok' && cluster.data) {
+      const c = cluster.data;
+      return `${c.name ?? 'Proxmox'} · ${c.nodesOnline}/${c.nodesTotal} nodos`;
+    }
+    if (cluster.phase === 'not_configured') return 'Proxmox no configurado';
+    if (cluster.phase === 'error') return 'Proxmox no disponible';
+    return 'Consultando Proxmox…';
+  })();
 
   return (
     <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-slate-800/80 bg-slate-950/80 px-4 backdrop-blur-xl md:px-6">
-      {/* Left: Breadcrumb / Page Title */}
       <div className="flex items-center gap-2.5 sm:gap-3">
-        {/* Mobile Sidebar Hamburger Toggle */}
         <button
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-800 bg-slate-900 text-slate-300 transition-colors hover:bg-slate-800 hover:text-white md:hidden"
-          title="Toggle Navigation Menu"
-          aria-label="Toggle Navigation Menu"
+          aria-label="Abrir navegación"
         >
           <Menu className="h-5 w-5" />
         </button>
 
-        <div>
+        <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <h1 className="font-mono text-base font-bold text-slate-100 md:text-lg">
-              {pageTitles[currentPage] || 'Overview'}
+            <h1 className="truncate font-mono text-base font-bold text-slate-100 md:text-lg">
+              {PAGE_TITLES[currentPage]}
             </h1>
-            <span className="hidden rounded bg-slate-800/80 px-1.5 py-0.5 font-mono text-[10px] font-medium text-slate-400 sm:inline-block">
-              LIVE
-            </span>
+            {cluster.stale && (
+              <span className="hidden rounded bg-amber-500/15 px-1.5 py-0.5 font-mono text-[10px] font-bold text-amber-300 sm:inline-block">
+                STALE
+              </span>
+            )}
           </div>
-          <p className="hidden text-xs text-slate-400 sm:block">
-            NUGA HOME • {overview.homeStatus} ({overview.healthScore}% Health)
-          </p>
+          <p className="hidden truncate text-xs text-slate-400 sm:block">NUGA HOME · {clusterLabel}</p>
         </div>
       </div>
 
-      {/* Center: Quick Command Palette Trigger */}
       <div className="hidden max-w-md flex-1 px-4 lg:block">
         <button
           onClick={() => setIsCommandPaletteOpen(true)}
@@ -86,7 +92,7 @@ export const Header: React.FC = () => {
         >
           <div className="flex items-center gap-2">
             <Search className="h-3.5 w-3.5 text-slate-400" />
-            <span>Search nodes, VMs, devices, cameras, or ask Hermes...</span>
+            <span>Buscar nodos, VMs, contenedores…</span>
           </div>
           <kbd className="rounded border border-slate-700 bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] text-slate-300">
             Ctrl + K
@@ -94,51 +100,49 @@ export const Header: React.FC = () => {
         </button>
       </div>
 
-      {/* Right: Telemetry pill, Notifications, Hermes trigger, User profile, Clock */}
       <div className="flex items-center gap-2 sm:gap-3">
-        {/* Mobile Search Button */}
         <button
           onClick={() => setIsCommandPaletteOpen(true)}
           className="rounded-lg border border-slate-800 bg-slate-900 p-2 text-slate-400 hover:text-slate-200 lg:hidden"
-          title="Search"
+          title="Buscar"
         >
           <Search className="h-4 w-4" />
         </button>
 
-        {/* Starlink Live Indicator */}
-        <div
-          onClick={() => setCurrentPage('starlink')}
-          className="hidden cursor-pointer items-center gap-2 rounded-lg border border-slate-800 bg-slate-900/50 px-2.5 py-1 text-xs transition-colors hover:bg-slate-900 md:flex"
-        >
-          <Wifi className="h-3.5 w-3.5 text-cyan-400" />
-          <span className="font-mono text-slate-200">{starlink.downloadMbps} Mbps</span>
-          <span className="font-mono text-slate-400">({starlink.latencyMs}ms)</span>
-        </div>
+        {cluster.data && (
+          <div
+            onClick={() => setCurrentPage('proxmox')}
+            className="hidden cursor-pointer items-center gap-2 rounded-lg border border-slate-800 bg-slate-900/50 px-2.5 py-1 text-xs transition-colors hover:bg-slate-900 md:flex"
+          >
+            <Server className="h-3.5 w-3.5 text-cyan-400" />
+            <span className="font-mono text-slate-200">
+              CPU {formatPct(cluster.data.cpuUsagePct, 0)}
+            </span>
+          </div>
+        )}
 
-        {/* Notifications Dropdown Toggle */}
         <div className="relative">
           <button
-            onClick={() => setShowNotifications(prev => !prev)}
+            onClick={() => setShowNotifications((prev) => !prev)}
             className="relative rounded-lg border border-slate-800 bg-slate-900 p-2 text-slate-300 transition-colors hover:bg-slate-800 hover:text-white"
-            title="System Alerts"
+            title="Estado de integraciones"
           >
             <Bell className="h-4 w-4" />
-            {activeAlerts.length > 0 && (
+            {failing.length > 0 && (
               <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 font-mono text-[10px] font-bold text-slate-950">
-                {activeAlerts.length}
+                {failing.length}
               </span>
             )}
           </button>
 
-          {/* Notifications Flyout */}
           {showNotifications && (
             <div
-              className="absolute right-0 top-12 z-50 w-80 rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-2xl animate-in fade-in slide-in-from-top-2 duration-150"
-              onClick={e => e.stopPropagation()}
+              className="absolute right-0 top-12 z-50 w-80 rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between border-b border-slate-800 pb-2">
                 <span className="font-mono text-xs font-bold uppercase tracking-wider text-slate-200">
-                  Active Alerts ({activeAlerts.length})
+                  Integraciones con fallo ({failing.length})
                 </span>
                 <button
                   onClick={() => {
@@ -147,31 +151,26 @@ export const Header: React.FC = () => {
                   }}
                   className="text-xs text-cyan-400 hover:underline"
                 >
-                  View all
+                  Ver todo
                 </button>
               </div>
               <div className="mt-3 max-h-60 space-y-2 overflow-y-auto pr-1">
-                {activeAlerts.length === 0 ? (
-                  <p className="py-4 text-center text-xs text-slate-400">No active alerts. Homelab nominal.</p>
+                {failing.length === 0 ? (
+                  <div className="flex items-center justify-center gap-2 py-4 text-xs text-slate-400">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                    <span>Ninguna integración configurada está fallando.</span>
+                  </div>
                 ) : (
-                  activeAlerts.map(alert => (
+                  failing.map(([key, health]) => (
                     <div
-                      key={alert.id}
-                      className="rounded-xl border border-slate-800 bg-slate-950/60 p-2.5 text-xs"
+                      key={key}
+                      className="rounded-xl border border-rose-500/25 bg-rose-950/20 p-2.5 text-xs"
                     >
-                      <div className="flex items-center justify-between">
-                        <StatusBadge status={alert.severity} size="sm" showPulse={false} />
-                        <span className="font-mono text-[10px] text-slate-400">{alert.timestamp}</span>
+                      <div className="flex items-center gap-1.5 font-mono font-bold text-rose-300">
+                        <AlertTriangle className="h-3.5 w-3.5" />
+                        <span>{key}</span>
                       </div>
-                      <p className="mt-1.5 font-medium text-slate-200">{alert.message}</p>
-                      <div className="mt-2 flex justify-end">
-                        <button
-                          onClick={() => acknowledgeAlert(alert.id)}
-                          className="rounded bg-slate-800 px-2 py-0.5 text-[10px] font-semibold text-slate-300 hover:bg-slate-700"
-                        >
-                          Acknowledge
-                        </button>
-                      </div>
+                      <p className="mt-1 text-[11px] leading-relaxed text-slate-400">{health.detail}</p>
                     </div>
                   ))
                 )}
@@ -180,19 +179,17 @@ export const Header: React.FC = () => {
           )}
         </div>
 
-        {/* Hermes Floating Drawer Toggle Button */}
         <button
           onClick={() => setIsHermesDrawerOpen(true)}
           className="flex items-center gap-1.5 rounded-lg border border-cyan-500/30 bg-gradient-to-r from-cyan-950/40 to-blue-950/40 px-3 py-1.5 text-xs font-semibold text-cyan-300 shadow-sm shadow-cyan-500/10 transition-all hover:border-cyan-500/60 hover:bg-cyan-900/30"
-          title="Open Hermes AI"
+          title="Abrir Hermes"
         >
-          <Sparkles className="h-3.5 w-3.5 text-cyan-400 animate-pulse" />
+          <Sparkles className="h-3.5 w-3.5 text-cyan-400" />
           <span className="hidden sm:inline">Hermes</span>
         </button>
 
-        {/* Real-time Clock */}
         <div className="hidden border-l border-slate-800 pl-3 font-mono text-xs font-bold text-slate-300 md:block">
-          {overview.lastUpdated}
+          {formatClock(cluster.fetchedAt ?? ready.fetchedAt)}
         </div>
       </div>
     </header>

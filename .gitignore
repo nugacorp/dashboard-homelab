@@ -4,5 +4,16 @@ dist/
 coverage/
 .DS_Store
 *.log
-.env*
+
+# Secrets: never commit real environment values.
+.env
+.env.*
 !.env.example
+
+# Local TLS material (e.g. the Proxmox cluster CA) must stay out of git.
+certs/
+*.pem
+*.crt
+*.key
+
+.claude/settings.local.json
