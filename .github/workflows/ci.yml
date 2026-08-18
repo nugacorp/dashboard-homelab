@@ -72,8 +72,10 @@ jobs:
         run: docker build -t nuga-home-dashboard:ci .
 
       - name: Boot the container and check liveness
+        # Same hardening the compose file applies, so CI proves the container
+        # actually runs under a read-only root filesystem and no-new-privileges.
         run: |
-          docker run -d --name nuga-ci -p 8080:8080 nuga-home-dashboard:ci
+          docker run -d --name nuga-ci -p 8080:8080             --read-only --tmpfs /tmp             --security-opt no-new-privileges:true             nuga-home-dashboard:ci
           for _ in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:8080/api/health/live >/dev/null 2>&1; then break; fi
             sleep 1
@@ -82,5 +84,7 @@ jobs:
           # With nothing configured, every integration must report not_configured
           # rather than pretending to be connected.
           curl -fsS http://127.0.0.1:8080/api/health/ready | grep -q 'not_configured'
+          # Must run unprivileged.
+          test "$(docker exec nuga-ci id -u)" = "1000"
           docker logs nuga-ci
           docker rm -f nuga-ci
