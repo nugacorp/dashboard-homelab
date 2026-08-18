@@ -21,6 +21,9 @@ COPY shared ./shared
 COPY server ./server
 COPY scripts ./scripts
 COPY src ./src
+# Static assets served verbatim by Vite (favicon).  Without this the built
+# image would 404 on /favicon.svg.
+COPY public ./public
 RUN npm run build
 
 # --------------------------------------------------------- prod modules ---
