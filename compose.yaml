@@ -1,0 +1,53 @@
+# NUGA HOME - deployment on VM120 (nuga-ops).
+#
+# Notes on what is deliberately absent:
+#  - no /var/run/docker.sock mount: that would hand the container root on the host
+#  - no database volume: the app is stateless, sessions are signed cookies
+#  - no privileged mode, no extra capabilities
+#  - the port is published on the LAN only; put a reverse proxy in front before
+#    exposing anything beyond it
+
+services:
+  nuga-home:
+    build: .
+    image: nuga-home-dashboard:latest
+    container_name: nuga-home
+    restart: unless-stopped
+
+    # Secrets live here, outside the image and outside git.
+    env_file:
+      - .env
+
+    environment:
+      NODE_ENV: production
+      PORT: "8080"
+      HOST: 0.0.0.0
+
+    ports:
+      # host:container - LAN only for now (http://192.168.1.28:8080)
+      - "8080:8080"
+
+    volumes:
+      # Read-only mount for the Proxmox cluster CA so TLS verification can stay on.
+      # Create /etc/nuga-home on the host and copy pve-root-ca.pem into it.
+      - /etc/nuga-home:/etc/nuga-home:ro
+
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/health/live"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+    security_opt:
+      - no-new-privileges:true
+
+    read_only: true
+    tmpfs:
+      - /tmp
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

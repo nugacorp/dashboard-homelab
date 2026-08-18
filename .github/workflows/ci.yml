@@ -1,0 +1,86 @@
+name: CI
+
+# Build and test only. No deployment: VM120 is updated by hand for now.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: typecheck / test / build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck (web, server, tests)
+        run: npm run typecheck
+
+      # The TLS suite needs openssl and a host that does not intercept TLS.
+      # Both hold on ubuntu-latest, unlike a workstation running an AV proxy.
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify the server boots and serves the built SPA
+        run: |
+          node dist/server/index.js &
+          SERVER_PID=$!
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/api/health/live >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8080/api/health/live
+          curl -fsS http://127.0.0.1:8080/api/health/ready >/dev/null
+          # The SPA shell must be served by the same origin as the API.
+          curl -fsS http://127.0.0.1:8080/ | grep -q 'NUGA HOME'
+          kill $SERVER_PID
+        env:
+          NODE_ENV: production
+          PORT: '8080'
+          HOST: 127.0.0.1
+
+  docker:
+    name: docker image builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t nuga-home-dashboard:ci .
+
+      - name: Boot the container and check liveness
+        run: |
+          docker run -d --name nuga-ci -p 8080:8080 nuga-home-dashboard:ci
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/api/health/live >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8080/api/health/live
+          # With nothing configured, every integration must report not_configured
+          # rather than pretending to be connected.
+          curl -fsS http://127.0.0.1:8080/api/health/ready | grep -q 'not_configured'
+          docker logs nuga-ci
+          docker rm -f nuga-ci

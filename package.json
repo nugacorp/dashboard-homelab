@@ -14,14 +14,15 @@
     "build:web": "vite build",
     "build:server": "tsc -p tsconfig.server.json",
     "start": "node dist/server/index.js",
-    "typecheck": "npm run typecheck:web && npm run typecheck:server",
+    "typecheck": "npm run typecheck:web && npm run typecheck:server && npm run typecheck:test",
     "typecheck:web": "tsc -p tsconfig.json --noEmit",
     "typecheck:server": "tsc -p tsconfig.server.json --noEmit",
     "lint": "npm run typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
     "hash-password": "tsx scripts/hash-password.ts",
-    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\""
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "typecheck:test": "tsc -p tsconfig.test.json --noEmit"
   },
   "dependencies": {
     "dotenv": "^17.2.3",
