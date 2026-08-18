@@ -61,7 +61,7 @@ export const NetworkPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
-              {unifi.vlans.map(vlan => (
+              {(unifi.vlans || []).map(vlan => (
                 <tr key={vlan.id} className="hover:bg-slate-800/40">
                   <td className="px-4 py-3 font-mono font-bold text-cyan-400">VLAN {vlan.id}</td>
                   <td className="px-4 py-3 font-semibold text-slate-200">{vlan.name}</td>

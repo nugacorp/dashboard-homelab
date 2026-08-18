@@ -122,13 +122,13 @@ export const CommandPalette: React.FC = () => {
   }, [vms, containers, cameras, services, rooms]);
 
   const filtered = useMemo(() => {
-    if (!query.trim()) return items.slice(0, 10);
-    const q = query.toLowerCase();
+    const q = (query || '').toLowerCase().trim();
+    if (!q) return items.slice(0, 10);
     return items.filter(
       item =>
-        item.title.toLowerCase().includes(q) ||
+        (item.title || '').toLowerCase().includes(q) ||
         (item.subtitle && item.subtitle.toLowerCase().includes(q)) ||
-        item.category.toLowerCase().includes(q)
+        (item.category || '').toLowerCase().includes(q)
     );
   }, [items, query]);
 

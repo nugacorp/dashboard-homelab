@@ -9,11 +9,16 @@ export const LogsPage: React.FC = () => {
 
   const services = ['ALL', 'Corosync', 'Proxmox VE', 'UniFi Network', 'Frigate NVR', 'Immich Server', 'Home Assistant'];
 
+  const q = (search || '').toLowerCase().trim();
+
   const filteredLogs = logs.filter(l => {
+    const msg = (l.message || '').toLowerCase();
+    const srv = (l.service || '').toLowerCase();
     const matchSearch =
-      l.message.toLowerCase().includes(search.toLowerCase()) ||
-      l.service.toLowerCase().includes(search.toLowerCase());
-    const matchService = serviceFilter === 'ALL' || l.service.toLowerCase() === serviceFilter.toLowerCase();
+      q === '' ||
+      msg.includes(q) ||
+      srv.includes(q);
+    const matchService = serviceFilter === 'ALL' || srv === serviceFilter.toLowerCase();
     return matchSearch && matchService;
   });
 

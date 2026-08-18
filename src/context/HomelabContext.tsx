@@ -106,6 +106,8 @@ interface HomelabContextType {
   logs: SystemLog[];
   integrations: IntegrationSetting[];
   hermesMessages: HermesMessage[];
+  isMobileMenuOpen: boolean;
+  setIsMobileMenuOpen: (open: boolean) => void;
   isHermesDrawerOpen: boolean;
   setIsHermesDrawerOpen: (open: boolean) => void;
   isCommandPaletteOpen: boolean;
@@ -158,6 +160,7 @@ export const HomelabProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [integrations, setIntegrations] = useState<IntegrationSetting[]>(mockIntegrations);
   const [hermesMessages, setHermesMessages] = useState<HermesMessage[]>(initialHermesMessages);
 
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [isHermesDrawerOpen, setIsHermesDrawerOpen] = useState<boolean>(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState<boolean>(false);
   const [selectedCamera, setSelectedCamera] = useState<CameraStream | null>(null);
@@ -488,6 +491,8 @@ export const HomelabProvider: React.FC<{ children: React.ReactNode }> = ({ child
         logs,
         integrations,
         hermesMessages,
+        isMobileMenuOpen,
+        setIsMobileMenuOpen,
         isHermesDrawerOpen,
         setIsHermesDrawerOpen,
         isCommandPaletteOpen,

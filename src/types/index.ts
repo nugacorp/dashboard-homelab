@@ -30,6 +30,13 @@ export interface ProxmoxCluster {
   usedStorageBytes: number;
   vmsCount: number;
   containersCount: number;
+  quorumStatus?: string;
+  pveVersion?: string;
+  cpuUsageAvgPct?: number;
+  ramUsedGb?: number;
+  ramTotalGb?: number;
+  storageUsedTb?: number;
+  storageTotalTb?: number;
 }
 
 export interface ProxmoxNode {
@@ -38,6 +45,8 @@ export interface ProxmoxNode {
   status: 'online' | 'offline' | 'degraded';
   cpuModel: string;
   cpuCores: number;
+  cpuThreads?: number;
+  kernel?: string;
   cpuUsagePct: number;
   ramTotalGb: number;
   ramUsedGb: number;
@@ -81,6 +90,9 @@ export interface LXCContainer {
   cpuUsagePct: number;
   ramTotalMb: number;
   ramUsedMb: number;
+  memoryTotalMb?: number;
+  memoryUsedMb?: number;
+  cores?: number;
   ipAddress: string;
   uptime: string;
   description: string;
@@ -90,6 +102,7 @@ export interface LXCContainer {
 export interface StarlinkTelemetry {
   status: 'Online' | 'Degraded' | 'Offline' | 'Searching';
   deviceModel: string;
+  firmwareVersion?: string;
   downloadMbps: number;
   uploadMbps: number;
   latencyMs: number;
@@ -105,6 +118,8 @@ export interface StarlinkTelemetry {
   elevationDeg: number;
   tiltDeg: number;
   obstructionFraction: number; // 0.0 to 1.0
+  obstructionPct?: number;
+  snowMeltActive?: boolean;
   lastOutage: string;
   recentOutages: {
     timestamp: string;
@@ -112,6 +127,33 @@ export interface StarlinkTelemetry {
     cause: string;
   }[];
   latencyHistory: { time: string; latency: number; download: number; upload: number }[];
+}
+
+export interface UniFiVlan {
+  id: number;
+  name: string;
+  subnet: string;
+  dhcpRange: string;
+  isolated: boolean;
+  clientsCount: number;
+}
+
+export interface UniFiClient {
+  id: string;
+  name: string;
+  hostname?: string;
+  ip: string;
+  mac: string;
+  vlan: string | number;
+  deviceType?: string;
+  apName?: string;
+  switchPort?: string;
+  signalDbm?: number;
+  txRateMbps?: number;
+  rxRateMbps?: number;
+  experiencePct?: number;
+  downloadMb?: number;
+  uploadMb?: number;
 }
 
 export interface UniFiNetwork {
@@ -124,9 +166,14 @@ export interface UniFiNetwork {
   connectedClients: number;
   activeSwitches: number;
   activeAPs: number;
+  accessPointsCount?: number;
+  switchesCount?: number;
+  threatsBlockedToday?: number;
   throughputRxMbps: number;
   throughputTxMbps: number;
   internetUtilizationPct: number;
+  vlans: UniFiVlan[];
+  clients: UniFiClient[];
   devices: {
     id: string;
     name: string;
@@ -169,6 +216,7 @@ export interface SmartHomeSummary {
   avgHumidityPct: number;
   peopleHome: string[];
   securityMode: 'Disarmed' | 'Armed Home' | 'Armed Away';
+  totalDevices?: number;
 }
 
 export interface SmartDevice {
@@ -260,6 +308,10 @@ export interface StoragePool {
   usedBytes: number;
   freeBytes: number;
   usedPct: number;
+  totalTb?: number;
+  usedTb?: number;
+  freeTb?: number;
+  compression?: string;
   health: 'ONLINE' | 'DEGRADED' | 'FAULTED';
   readSpeedMbps: number;
   writeSpeedMbps: number;
@@ -271,7 +323,9 @@ export interface DiskDrive {
   model: string;
   serial: string;
   slot: string;
+  type?: string;
   capacityGb: number;
+  capacityTb?: number;
   temperatureC: number;
   smartStatus: 'PASSED' | 'WARNING' | 'FAILED';
   healthPct: number;
@@ -308,8 +362,9 @@ export interface BackupJob {
 export interface HomelabService {
   id: string;
   name: string;
-  category: 'Core' | 'AI' | 'Media' | 'Network' | 'Database' | 'Home';
+  category: string;
   host: string;
+  hostNode?: string;
   status: 'Running' | 'Stopped' | 'Degraded' | 'Unknown';
   cpuPct: number;
   ramMb: number;
@@ -326,12 +381,15 @@ export interface DockerContainer {
   name: string;
   image: string;
   host: string;
+  node?: string;
   status: 'running' | 'exited' | 'restarting';
   cpuPct: number;
+  cpuUsagePct?: number;
   ramMb: number;
+  memoryUsedMb?: number;
   ramLimitMb: number;
   uptime: string;
-  ports: string;
+  ports: string | string[];
   created: string;
 }
 
@@ -341,6 +399,10 @@ export interface EnergyData {
   todayKwh: number;
   monthKwh: number;
   estimatedCostMonthUsd: number;
+  costEstimatedPerMonth?: number;
+  upsBatteryPct?: number;
+  upsRuntimeMinutes?: number;
+  ambientTempC?: number;
   gridVoltageVolts: number;
   frequencyHz: number;
   circuits: {
@@ -350,6 +412,7 @@ export interface EnergyData {
     color: string;
   }[];
   history24h: { time: string; watts: number; cost: number }[];
+  dailyHistory?: { time: string; watts: number }[];
 }
 
 // Alerts & Logs

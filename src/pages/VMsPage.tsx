@@ -24,15 +24,23 @@ export const VMsPage: React.FC = () => {
   const [consoleVM, setConsoleVM] = useState<VirtualMachine | null>(null);
 
   const filteredVMs = useMemo(() => {
+    const q = (search || '').toLowerCase().trim();
     return vms.filter(vm => {
+      const name = (vm.name || '').toLowerCase();
+      const vmidStr = String(vm.vmid || '');
+      const ip = (vm.ipAddress || '').toLowerCase();
+      const os = (vm.os || '').toLowerCase();
+      const status = (vm.status || '').toLowerCase();
+
       const matchSearch =
-        vm.name.toLowerCase().includes(search.toLowerCase()) ||
-        vm.vmid.toString().includes(search) ||
-        vm.ipAddress.includes(search) ||
-        vm.os.toLowerCase().includes(search.toLowerCase());
+        q === '' ||
+        name.includes(q) ||
+        vmidStr.includes(q) ||
+        ip.includes(q) ||
+        os.includes(q);
 
       const matchNode = nodeFilter === 'ALL' || vm.node === nodeFilter;
-      const matchStatus = statusFilter === 'ALL' || vm.status.toLowerCase() === statusFilter.toLowerCase();
+      const matchStatus = statusFilter === 'ALL' || status === statusFilter.toLowerCase();
 
       return matchSearch && matchNode && matchStatus;
     });
@@ -141,10 +149,10 @@ export const VMsPage: React.FC = () => {
                   </td>
                   <td className="px-4 py-3.5 font-mono text-slate-400">{vm.ipAddress}</td>
                   <td className="px-4 py-3.5 font-mono text-slate-300">
-                    {vm.cores} vCPU ({vm.cpuUsagePct}%)
+                    {vm.cpuCores} vCPU ({vm.cpuUsagePct}%)
                   </td>
                   <td className="px-4 py-3.5 font-mono text-slate-300">
-                    {vm.memoryUsedMb} / {vm.memoryTotalMb} MB
+                    {vm.ramUsedMb} / {vm.ramTotalMb} MB
                   </td>
                   <td className="px-4 py-3.5 font-mono text-slate-300">{vm.diskTotalGb} GB</td>
                   <td className="px-4 py-3.5 font-mono text-slate-400">{vm.uptime}</td>
@@ -216,7 +224,7 @@ export const VMsPage: React.FC = () => {
                 {consoleVM.name}:~$ htop --tree
               </div>
               <div className="text-cyan-300">
-                Tasks: 38 total, 1 running, 37 sleeping | CPU: {consoleVM.cpuUsagePct}% | Mem: {consoleVM.memoryUsedMb}MB/{consoleVM.memoryTotalMb}MB
+                Tasks: 38 total, 1 running, 37 sleeping | CPU: {consoleVM.cpuUsagePct}% | Mem: {consoleVM.ramUsedMb}MB/{consoleVM.ramTotalMb}MB
               </div>
               <div className="text-slate-400 mt-2">
                 Type `help` or `exit` to interact with this VM session.

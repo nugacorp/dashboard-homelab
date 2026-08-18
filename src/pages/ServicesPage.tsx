@@ -10,14 +10,22 @@ export const ServicesPage: React.FC = () => {
 
   const categories = ['ALL', 'Media', 'Smart Home', 'Security', 'Management', 'Database', 'Monitoring', 'Productivity'];
 
-  const filteredServices = services.filter(srv => {
-    const matchSearch =
-      srv.name.toLowerCase().includes(search.toLowerCase()) ||
-      srv.category.toLowerCase().includes(search.toLowerCase()) ||
-      srv.hostNode.toLowerCase().includes(search.toLowerCase()) ||
-      srv.url.toLowerCase().includes(search.toLowerCase());
+  const q = (search || '').toLowerCase().trim();
 
-    const matchCategory = categoryFilter === 'ALL' || srv.category.toLowerCase() === categoryFilter.toLowerCase();
+  const filteredServices = services.filter(srv => {
+    const name = (srv.name || '').toLowerCase();
+    const cat = (srv.category || '').toLowerCase();
+    const host = (srv.hostNode || srv.host || '').toLowerCase();
+    const url = (srv.url || '').toLowerCase();
+
+    const matchSearch =
+      q === '' ||
+      name.includes(q) ||
+      cat.includes(q) ||
+      host.includes(q) ||
+      url.includes(q);
+
+    const matchCategory = categoryFilter === 'ALL' || cat === categoryFilter.toLowerCase();
     return matchSearch && matchCategory;
   });
 
@@ -110,7 +118,7 @@ export const ServicesPage: React.FC = () => {
                 <div className="mt-2.5 space-y-1 text-[11px]">
                   <div className="flex justify-between text-slate-400">
                     <span>Host Node:</span>
-                    <span className="font-mono text-slate-300">{srv.hostNode}</span>
+                    <span className="font-mono text-slate-300">{srv.hostNode || srv.host}</span>
                   </div>
                   <div className="flex justify-between text-slate-400">
                     <span>Category:</span>

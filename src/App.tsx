@@ -22,6 +22,7 @@ import { CommandPalette } from './components/common/CommandPalette';
 import { HermesDrawer } from './components/common/HermesDrawer';
 import { LiveCameraModal } from './components/common/LiveCameraModal';
 import { ConfirmationDialog } from './components/ui/ConfirmationDialog';
+import { MobileBottomBar } from './components/common/MobileBottomBar';
 
 const AppContent: React.FC = () => {
   const { currentPage } = useHomelab();
@@ -74,6 +75,7 @@ const AppContent: React.FC = () => {
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-[#020617]">
           {renderCurrentPage()}
         </div>
+        <MobileBottomBar />
       </main>
       <HermesDrawer />
       <CommandPalette />

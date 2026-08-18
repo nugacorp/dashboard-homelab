@@ -1,13 +1,14 @@
 import React from 'react';
 
 export interface StatusBadgeProps {
-  status: string;
+  status?: string | boolean | null;
   size?: 'sm' | 'md' | 'lg';
   showPulse?: boolean;
 }
 
-export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, size = 'md', showPulse = true }) => {
-  const normalized = status.toLowerCase();
+export const StatusBadge: React.FC<StatusBadgeProps> = ({ status = 'online', size = 'md', showPulse = true }) => {
+  const displayStatus = typeof status === 'boolean' ? (status ? 'Online' : 'Offline') : String(status || 'online');
+  const normalized = displayStatus.toLowerCase();
 
   let dotColor = 'bg-emerald-400';
   let badgeBg = 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300';
@@ -59,7 +60,7 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, size = 'md', s
         )}
         <span className={`relative inline-flex rounded-full ${dotColor} ${dotSize}`} />
       </span>
-      <span className="capitalize">{status}</span>
+      <span className="capitalize">{displayStatus}</span>
     </span>
   );
 };

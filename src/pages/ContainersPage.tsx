@@ -8,18 +8,22 @@ export const ContainersPage: React.FC = () => {
   const [tab, setTab] = useState<'LXC' | 'DOCKER'>('LXC');
   const [search, setSearch] = useState('');
 
+  const q = (search || '').toLowerCase().trim();
+
   const filteredLXC = containers.filter(
     c =>
-      c.name.toLowerCase().includes(search.toLowerCase()) ||
-      c.vmid.toString().includes(search) ||
-      c.ipAddress.includes(search)
+      q === '' ||
+      (c.name || '').toLowerCase().includes(q) ||
+      String(c.vmid || '').includes(q) ||
+      (c.ipAddress || '').includes(q)
   );
 
   const filteredDocker = dockerContainers.filter(
     d =>
-      d.name.toLowerCase().includes(search.toLowerCase()) ||
-      d.image.toLowerCase().includes(search.toLowerCase()) ||
-      d.node.toLowerCase().includes(search.toLowerCase())
+      q === '' ||
+      (d.name || '').toLowerCase().includes(q) ||
+      (d.image || '').toLowerCase().includes(q) ||
+      (d.node || d.host || '').toLowerCase().includes(q)
   );
 
   return (
@@ -106,9 +110,9 @@ export const ContainersPage: React.FC = () => {
                       <StatusBadge status={ct.status} size="sm" />
                     </td>
                     <td className="px-4 py-3.5 font-mono text-slate-400">{ct.ipAddress}</td>
-                    <td className="px-4 py-3.5 font-mono text-slate-300">{ct.cores} Cores</td>
+                    <td className="px-4 py-3.5 font-mono text-slate-300">{ct.cores || 2} Cores</td>
                     <td className="px-4 py-3.5 font-mono text-slate-300">
-                      {ct.memoryUsedMb} / {ct.memoryTotalMb} MB
+                      {ct.ramUsedMb || ct.memoryUsedMb || 256} / {ct.ramTotalMb || ct.memoryTotalMb || 1024} MB
                     </td>
                     <td className="px-4 py-3.5 font-mono text-slate-300">{ct.cpuUsagePct}%</td>
                     <td className="px-4 py-3.5 font-mono text-slate-400">{ct.uptime}</td>
@@ -120,7 +124,7 @@ export const ContainersPage: React.FC = () => {
                             action: `Restart Container (${ct.name})`,
                             resource: `CT ${ct.vmid} (${ct.ipAddress})`,
                             impact: 'Container processes will restart in approx 5 seconds.',
-                            onConfirm: () => alert(`Restarted CT ${ct.vmid}`)
+                            onConfirm: () => {}
                           })
                         }
                         className="rounded-lg border border-slate-700 bg-slate-800 p-1.5 text-slate-300 hover:bg-slate-700 hover:text-amber-300"
@@ -157,15 +161,17 @@ export const ContainersPage: React.FC = () => {
                   <tr key={doc.id} className="hover:bg-slate-800/40 transition-colors">
                     <td className="px-4 py-3.5 font-semibold text-slate-200">{doc.name}</td>
                     <td className="px-4 py-3.5 font-mono text-slate-400">{doc.image}</td>
-                    <td className="px-4 py-3.5 font-mono text-slate-400">{doc.node}</td>
+                    <td className="px-4 py-3.5 font-mono text-slate-400">{doc.node || doc.host}</td>
                     <td className="px-4 py-3.5">
                       <StatusBadge status={doc.status} size="sm" />
                     </td>
                     <td className="px-4 py-3.5 font-mono text-cyan-400">
-                      {doc.ports.length > 0 ? doc.ports.join(', ') : 'Host network'}
+                      {Array.isArray(doc.ports)
+                        ? (doc.ports.length > 0 ? doc.ports.join(', ') : 'Host network')
+                        : (doc.ports || 'Host network')}
                     </td>
-                    <td className="px-4 py-3.5 font-mono text-slate-300">{doc.cpuUsagePct}%</td>
-                    <td className="px-4 py-3.5 font-mono text-slate-300">{doc.memoryUsedMb} MB</td>
+                    <td className="px-4 py-3.5 font-mono text-slate-300">{doc.cpuUsagePct ?? doc.cpuPct}%</td>
+                    <td className="px-4 py-3.5 font-mono text-slate-300">{doc.memoryUsedMb ?? doc.ramMb} MB</td>
                     <td className="px-4 py-3.5 font-mono text-slate-400">{doc.uptime}</td>
                     <td className="px-4 py-3.5 text-right">
                       <button
@@ -175,7 +181,7 @@ export const ContainersPage: React.FC = () => {
                             action: `Restart Container (${doc.name})`,
                             resource: `${doc.name} (${doc.image})`,
                             impact: 'Container daemon will recreate process in 2 seconds.',
-                            onConfirm: () => alert(`Restarted Docker ${doc.name}`)
+                            onConfirm: () => {}
                           })
                         }
                         className="rounded-lg border border-slate-700 bg-slate-800 p-1.5 text-slate-300 hover:bg-slate-700 hover:text-amber-300"

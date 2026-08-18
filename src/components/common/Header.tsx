@@ -6,7 +6,8 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Wifi,
-  ExternalLink
+  ExternalLink,
+  Menu
 } from 'lucide-react';
 import { useHomelab, NavigationPage } from '../../context/HomelabContext';
 import { StatusBadge } from '../ui/StatusBadge';
@@ -20,6 +21,8 @@ export const Header: React.FC = () => {
     acknowledgeAlert,
     setIsHermesDrawerOpen,
     setIsCommandPaletteOpen,
+    isMobileMenuOpen,
+    setIsMobileMenuOpen,
     starlink
   } = useHomelab();
 
@@ -49,7 +52,17 @@ export const Header: React.FC = () => {
   return (
     <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-slate-800/80 bg-slate-950/80 px-4 backdrop-blur-xl md:px-6">
       {/* Left: Breadcrumb / Page Title */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2.5 sm:gap-3">
+        {/* Mobile Sidebar Hamburger Toggle */}
+        <button
+          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-800 bg-slate-900 text-slate-300 transition-colors hover:bg-slate-800 hover:text-white md:hidden"
+          title="Toggle Navigation Menu"
+          aria-label="Toggle Navigation Menu"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+
         <div>
           <div className="flex items-center gap-2">
             <h1 className="font-mono text-base font-bold text-slate-100 md:text-lg">
