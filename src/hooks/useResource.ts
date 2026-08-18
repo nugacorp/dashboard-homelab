@@ -13,10 +13,20 @@
  *
  * A refresh that fails while we already hold good data does NOT wipe the view:
  * the previous data stays on screen and is flagged `stale`.
+ *
+ * Two transports share this machinery:
+ *
+ *   useResource     for /api endpoints that answer with an ApiEnvelope
+ *   useRawResource  for /api endpoints that answer with a plain DTO
+ *
+ * That split is not cosmetic. `/api/health/ready` returns a raw ReadyResponse
+ * whose own `status` field means something completely different from an
+ * envelope's `status`, so feeding it through the envelope client produced a
+ * "formato inesperado" error on a perfectly healthy backend.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ApiEnvelope, ApiError, IntegrationKey } from '@shared/api';
-import { apiGet } from '../services/api/client';
+import type { ApiError, IntegrationKey } from '@shared/api';
+import { apiGet, apiGetRawResult } from '../services/api/client';
 
 export type ResourcePhase = 'loading' | 'ok' | 'empty' | 'not_configured' | 'disabled' | 'error';
 
@@ -40,10 +50,20 @@ export interface UseResourceOptions<T> {
   enabled?: boolean;
 }
 
-export function useResource<T>(
-  path: string,
-  source: IntegrationKey | 'nugaOps',
-  options: UseResourceOptions<T> = {},
+/**
+ * What one attempt concluded, independent of transport. Both hooks below
+ * normalise onto this so the polling, staleness and phase logic exists once.
+ */
+type Outcome<T> =
+  | { kind: 'data'; data: T; fetchedAt: string }
+  | { kind: 'state'; phase: 'not_configured' | 'disabled'; error: ApiError | null }
+  | { kind: 'failure'; error: ApiError | null };
+
+function usePolledResource<T>(
+  /** Identity of the request; changing it restarts the effect. */
+  key: string,
+  load: (signal: AbortSignal) => Promise<Outcome<T>>,
+  options: UseResourceOptions<T>,
 ): Resource<T> {
   const { pollMs = 0, isEmpty, enabled = true } = options;
 
@@ -54,8 +74,10 @@ export function useResource<T>(
   const [stale, setStale] = useState(false);
   const [nonce, setNonce] = useState(0);
 
-  // Read inside the effect without making them dependencies.
+  // Read the latest closures inside the effect without making them deps.
   const dataRef = useRef<T | null>(null);
+  const loadRef = useRef(load);
+  loadRef.current = load;
   const isEmptyRef = useRef(isEmpty);
   isEmptyRef.current = isEmpty;
 
@@ -66,38 +88,38 @@ export function useResource<T>(
     const controller = new AbortController();
     let cancelled = false;
 
-    const load = async () => {
-      let envelope: ApiEnvelope<T>;
+    const run = async () => {
+      let outcome: Outcome<T>;
       try {
-        envelope = await apiGet<T>(path, source, controller.signal);
+        outcome = await loadRef.current(controller.signal);
       } catch {
         return; // aborted
       }
       if (cancelled) return;
 
-      if (envelope.status === 'ok' && envelope.data !== null) {
-        const empty = isEmptyRef.current?.(envelope.data) ?? false;
-        dataRef.current = envelope.data;
-        setData(envelope.data);
+      if (outcome.kind === 'data') {
+        const empty = isEmptyRef.current?.(outcome.data) ?? false;
+        dataRef.current = outcome.data;
+        setData(outcome.data);
         setError(null);
-        setFetchedAt(envelope.fetchedAt);
+        setFetchedAt(outcome.fetchedAt);
         setStale(false);
         setPhase(empty ? 'empty' : 'ok');
         return;
       }
 
-      if (envelope.status === 'not_configured' || envelope.status === 'disabled') {
+      if (outcome.kind === 'state') {
         dataRef.current = null;
         setData(null);
-        setError(envelope.error);
+        setError(outcome.error);
         setStale(false);
-        setPhase(envelope.status);
+        setPhase(outcome.phase);
         return;
       }
 
-      // unavailable
-      setError(envelope.error);
+      setError(outcome.error);
       if (dataRef.current !== null) {
+        // Keep the last good view rather than blanking it on one bad poll.
         setStale(true);
         setPhase('ok');
       } else {
@@ -105,15 +127,59 @@ export function useResource<T>(
       }
     };
 
-    void load();
-    const timer = pollMs > 0 ? window.setInterval(() => void load(), pollMs) : null;
+    void run();
+    const timer = pollMs > 0 ? window.setInterval(() => void run(), pollMs) : null;
 
     return () => {
       cancelled = true;
       controller.abort();
       if (timer !== null) window.clearInterval(timer);
     };
-  }, [path, source, pollMs, enabled, nonce]);
+  }, [key, pollMs, enabled, nonce]);
 
   return { phase, data, error, fetchedAt, stale, refresh };
+}
+
+/** For endpoints that answer with an ApiEnvelope. */
+export function useResource<T>(
+  path: string,
+  source: IntegrationKey | 'nugaOps',
+  options: UseResourceOptions<T> = {},
+): Resource<T> {
+  const load = async (signal: AbortSignal): Promise<Outcome<T>> => {
+    const envelope = await apiGet<T>(path, source, signal);
+
+    if (envelope.status === 'ok' && envelope.data !== null) {
+      return { kind: 'data', data: envelope.data, fetchedAt: envelope.fetchedAt };
+    }
+    if (envelope.status === 'not_configured' || envelope.status === 'disabled') {
+      return { kind: 'state', phase: envelope.status, error: envelope.error };
+    }
+    return { kind: 'failure', error: envelope.error };
+  };
+
+  return usePolledResource<T>(`envelope:${source}:${path}`, load, options);
+}
+
+/**
+ * For endpoints that answer with a plain DTO rather than an envelope:
+ * `/health/ready`, `/health/live`, `/auth/session`.
+ *
+ * These have no not_configured / disabled states — that information lives
+ * inside the payload — so the phase set here is loading / ok / empty / error.
+ * `fetchedAt` is stamped client-side on success, because a raw payload carries
+ * no server timestamp.
+ */
+export function useRawResource<T>(
+  path: string,
+  options: UseResourceOptions<T> = {},
+): Resource<T> {
+  const load = async (signal: AbortSignal): Promise<Outcome<T>> => {
+    const result = await apiGetRawResult<T>(path, signal);
+    return result.ok
+      ? { kind: 'data', data: result.data, fetchedAt: new Date().toISOString() }
+      : { kind: 'failure', error: result.error };
+  };
+
+  return usePolledResource<T>(`raw:${path}`, load, options);
 }

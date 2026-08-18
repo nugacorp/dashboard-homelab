@@ -1,8 +1,8 @@
 {
-  "extends": "./tsconfig.server.json",
+  "extends": "./tsconfig.json",
   "compilerOptions": {
-    "types": ["node", "vitest/globals"],
+    "types": ["node", "vite/client"],
     "noEmit": true
   },
-  "include": ["tests", "server", "shared"]
+  "include": ["tests", "src", "shared", "server"]
 }

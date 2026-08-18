@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="NUGA HOME">
+  <title>NUGA HOME</title>
+  <!--
+    Derived from the existing brand mark rather than invented: the sidebar and
+    login screen already render a rounded square with a cyan-600 -> blue-600
+    gradient toward the top right, carrying a white shield-and-check glyph.
+
+    Colours are the Tailwind tokens the UI uses:
+      cyan-600 #0891b2   blue-600 #2563eb   blue-700 #1d4ed8
+
+    Geometry is hand-authored so the file carries no third-party path data.
+    Kept deliberately chunky: this has to survive being drawn at 16 x 16.
+  -->
+  <defs>
+    <linearGradient id="nugaBadge" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#0891b2" />
+      <stop offset="1" stop-color="#2563eb" />
+    </linearGradient>
+  </defs>
+
+  <rect width="32" height="32" rx="8" fill="url(#nugaBadge)" />
+
+  <!-- Shield: flat shoulders, straight flanks, tapering to a rounded point. -->
+  <path
+    fill="#ffffff"
+    d="M16 6 L24 8.8 v7.4 c0 4.9 -3.3 8.2 -8 9.8 c-4.7 -1.6 -8 -4.9 -8 -9.8 V8.8 Z"
+  />
+
+  <!-- Check, in brand blue so it reads as a mark and not as a gap. -->
+  <path
+    fill="none"
+    stroke="#1d4ed8"
+    stroke-width="2.6"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    d="M11.9 15.4 L15 18.5 L20.3 12.6"
+  />
+</svg>

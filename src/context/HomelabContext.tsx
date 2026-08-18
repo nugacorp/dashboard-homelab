@@ -9,7 +9,7 @@ import type {
   SessionResponse,
   UptimeKumaStatusDto,
 } from '@shared/api';
-import { useResource, type Resource } from '../hooks/useResource';
+import { useRawResource, useResource, type Resource } from '../hooks/useResource';
 import { apiGetRaw, apiPost, UNAUTHENTICATED_EVENT } from '../services/api/client';
 
 /**
@@ -139,7 +139,10 @@ export const HomelabProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const canFetch = !session.loading && (!session.authRequired || session.authenticated);
 
-  const ready = useResource<ReadyResponse>('/health/ready', 'nugaOps', {
+  // Raw transport on purpose: /api/health/ready answers with a ReadyResponse,
+  // not an ApiEnvelope. Routing it through useResource made the envelope guard
+  // reject a healthy backend as "formato inesperado".
+  const ready = useRawResource<ReadyResponse>('/health/ready', {
     pollMs: POLL_SLOW_MS,
     enabled: canFetch,
   });
