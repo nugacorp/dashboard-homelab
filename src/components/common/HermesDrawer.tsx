@@ -13,7 +13,7 @@ export const HermesDrawer: React.FC = () => {
         id="hermes-floating-trigger"
         onClick={() => setIsHermesDrawerOpen(true)}
         className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-tr from-cyan-500 via-cyan-600 to-blue-600 text-white shadow-2xl shadow-cyan-500/30 transition-all duration-300 hover:scale-105 hover:shadow-cyan-500/50 active:scale-95 group"
-        title="Open Hermes AI Assistant"
+        title="Abrir Hermes"
       >
         <div className="relative">
           <Sparkles className="h-6 w-6 transition-transform group-hover:rotate-12" />
@@ -38,8 +38,8 @@ export const HermesDrawer: React.FC = () => {
                   <Bot className="h-4 w-4" />
                 </div>
                 <div>
-                  <h3 className="font-mono text-xs font-bold text-slate-100">Hermes AI Copilot</h3>
-                  <span className="text-[10px] text-cyan-400">Context: Active View Telemetry</span>
+                  <h3 className="font-mono text-xs font-bold text-slate-100">Hermes AI</h3>
+                  <span className="text-[10px] text-slate-500">Vía backend NUGA HOME</span>
                 </div>
               </div>
 
@@ -50,14 +50,14 @@ export const HermesDrawer: React.FC = () => {
                     setIsHermesDrawerOpen(false);
                   }}
                   className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
-                  title="Expand to Full Workspace"
+                  title="Abrir a pantalla completa"
                 >
                   <Maximize2 className="h-4 w-4" />
                 </button>
                 <button
                   onClick={() => setIsHermesDrawerOpen(false)}
                   className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
-                  title="Close Drawer"
+                  title="Cerrar"
                 >
                   <X className="h-4 w-4" />
                 </button>

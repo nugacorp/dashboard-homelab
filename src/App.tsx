@@ -1,4 +1,5 @@
 import React from 'react';
+import { Loader2 } from 'lucide-react';
 import { HomelabProvider, useHomelab } from './context/HomelabContext';
 import { Sidebar } from './components/common/Sidebar';
 import { Header } from './components/common/Header';
@@ -18,14 +19,28 @@ import { HermesPage } from './pages/HermesPage';
 import { AlertsPage } from './pages/AlertsPage';
 import { LogsPage } from './pages/LogsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { LoginPage } from './pages/LoginPage';
 import { CommandPalette } from './components/common/CommandPalette';
 import { HermesDrawer } from './components/common/HermesDrawer';
-import { LiveCameraModal } from './components/common/LiveCameraModal';
-import { ConfirmationDialog } from './components/ui/ConfirmationDialog';
 import { MobileBottomBar } from './components/common/MobileBottomBar';
 
 const AppContent: React.FC = () => {
-  const { currentPage } = useHomelab();
+  const { currentPage, session } = useHomelab();
+
+  if (session.loading) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-[#020617] text-slate-400">
+        <div className="flex items-center gap-2 font-mono text-sm">
+          <Loader2 className="h-4 w-4 animate-spin text-cyan-400" />
+          <span>Cargando NUGA HOME…</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (session.authRequired && !session.authenticated) {
+    return <LoginPage />;
+  }
 
   const renderCurrentPage = () => {
     switch (currentPage) {
@@ -68,19 +83,15 @@ const AppContent: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen w-full bg-[#020617] text-slate-300 font-sans overflow-hidden">
+    <div className="flex h-screen w-full overflow-hidden bg-[#020617] font-sans text-slate-300">
       <Sidebar />
-      <main className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+      <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
         <Header />
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-[#020617]">
-          {renderCurrentPage()}
-        </div>
+        <div className="flex-1 overflow-y-auto bg-[#020617] p-4 sm:p-6">{renderCurrentPage()}</div>
         <MobileBottomBar />
       </main>
       <HermesDrawer />
       <CommandPalette />
-      <LiveCameraModal />
-      <ConfirmationDialog />
     </div>
   );
 };

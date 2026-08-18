@@ -1,158 +1,174 @@
-import React, { useState } from 'react';
-import { Grid, Search, ExternalLink, RotateCcw, Filter, Server, CheckCircle2, AlertCircle } from 'lucide-react';
+import React from 'react';
+import { Grid, ExternalLink, Server, Home, Bot, Activity, Info } from 'lucide-react';
+import type { IntegrationHealth } from '@shared/api';
 import { useHomelab } from '../context/HomelabContext';
-import { StatusBadge } from '../components/ui/StatusBadge';
+import { formatRelative } from '../lib/format';
+
+/**
+ * Service catalog.
+ *
+ * The previous version listed twelve services (Plex, Frigate, Immich, Ollama,
+ * Tailscale, Postgres...) with CPU, RAM and uptime figures, none of which were
+ * real. What NUGA HOME can honestly enumerate is the set of endpoints it is
+ * itself configured to talk to, plus their live probe result.
+ *
+ * A full homelab service inventory needs a source of truth. Uptime Kuma is the
+ * natural one, but its 2.x API is not stable enough to depend on - see
+ * docs/INTEGRATIONS.md.
+ */
+
+interface ServiceRow {
+  id: string;
+  name: string;
+  description: string;
+  icon: React.ComponentType<{ className?: string }>;
+  accent: string;
+  health: IntegrationHealth | null;
+  url: string | null;
+}
+
+const STATE_LABEL: Record<string, { text: string; className: string }> = {
+  ok: { text: 'OK', className: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400' },
+  unavailable: { text: 'UNAVAILABLE', className: 'border-rose-500/20 bg-rose-500/10 text-rose-400' },
+  not_configured: { text: 'NOT CONFIGURED', className: 'border-slate-700 bg-slate-800/70 text-slate-400' },
+  disabled: { text: 'DISABLED', className: 'border-slate-700 bg-slate-800/70 text-slate-400' },
+};
 
 export const ServicesPage: React.FC = () => {
-  const { services, dockerContainers, restartService, requestConfirmation } = useHomelab();
-  const [search, setSearch] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('ALL');
+  const { ready, uptimeKuma } = useHomelab();
+  const integrations = ready.data?.integrations;
 
-  const categories = ['ALL', 'Media', 'Smart Home', 'Security', 'Management', 'Database', 'Monitoring', 'Productivity'];
-
-  const q = (search || '').toLowerCase().trim();
-
-  const filteredServices = services.filter(srv => {
-    const name = (srv.name || '').toLowerCase();
-    const cat = (srv.category || '').toLowerCase();
-    const host = (srv.hostNode || srv.host || '').toLowerCase();
-    const url = (srv.url || '').toLowerCase();
-
-    const matchSearch =
-      q === '' ||
-      name.includes(q) ||
-      cat.includes(q) ||
-      host.includes(q) ||
-      url.includes(q);
-
-    const matchCategory = categoryFilter === 'ALL' || cat === categoryFilter.toLowerCase();
-    return matchSearch && matchCategory;
-  });
+  const rows: ServiceRow[] = [
+    {
+      id: 'proxmox',
+      name: 'Proxmox VE',
+      description: 'Cluster de virtualización — origen de la telemetría de cómputo',
+      icon: Server,
+      accent: 'text-cyan-400',
+      health: integrations?.proxmox ?? null,
+      url: null,
+    },
+    {
+      id: 'homeAssistant',
+      name: 'Home Assistant',
+      description: 'Entidades y estados del hogar, en solo lectura',
+      icon: Home,
+      accent: 'text-amber-400',
+      health: integrations?.homeAssistant ?? null,
+      url: null,
+    },
+    {
+      id: 'hermes',
+      name: 'Hermes',
+      description: 'Agente de IA en VM110 — pendiente de conectar al dashboard',
+      icon: Bot,
+      accent: 'text-indigo-400',
+      health: integrations?.hermes ?? null,
+      url: null,
+    },
+    {
+      id: 'uptimeKuma',
+      name: 'Uptime Kuma',
+      description: 'Monitorización externa — se enlaza, no se consulta por API',
+      icon: Activity,
+      accent: 'text-emerald-400',
+      health: integrations?.uptimeKuma ?? null,
+      url: uptimeKuma.data?.url ?? null,
+    },
+  ];
 
   return (
     <div className="space-y-4 pb-8">
-      {/* Top Banner */}
       <div className="rounded-xl border border-slate-800 bg-[#0f172a] p-3.5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-2 text-emerald-400">
-              <Grid className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="font-mono text-sm font-bold text-white tracking-wide">Homelab Services Catalog</h2>
-                <span className="rounded bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 font-mono text-[10px] font-bold text-emerald-400 uppercase">
-                  {services.filter(s => s.status === 'Running').length}/{services.length} Online
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-400">
-                Self-hosted applications, docker containers, reverse proxies, and microservices
-              </p>
-            </div>
+        <div className="flex items-center gap-3">
+          <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-2 text-emerald-400">
+            <Grid className="h-5 w-5" />
           </div>
-
-          <div className="relative min-w-[220px]">
-            <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-500" />
-            <input
-              type="text"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search services by name, port, host..."
-              className="w-full rounded-lg border border-slate-800 bg-slate-950/80 pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
-            />
+          <div>
+            <h2 className="font-mono text-sm font-bold tracking-wide text-white">
+              Servicios conectados a NUGA HOME
+            </h2>
+            <p className="text-[11px] text-slate-400">
+              Endpoints que el backend tiene configurados y su último resultado de sondeo
+            </p>
           </div>
-        </div>
-
-        {/* Filter Categories */}
-        <div className="mt-3 flex flex-wrap gap-1.5 border-t border-slate-800/80 pt-2.5">
-          {categories.map(cat => (
-            <button
-              key={cat}
-              onClick={() => setCategoryFilter(cat)}
-              className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                categoryFilter === cat
-                  ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold'
-                  : 'bg-slate-950/60 text-slate-400 hover:text-slate-200 border border-slate-800'
-              }`}
-            >
-              {cat}
-            </button>
-          ))}
         </div>
       </div>
 
-      {/* Services Grid */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {filteredServices.map(srv => {
-          const isRunning = srv.status === 'Running';
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {rows.map((row) => {
+          const Icon = row.icon;
+          const label = STATE_LABEL[row.health?.state ?? 'not_configured']!;
+
           return (
             <div
-              key={srv.id}
-              className="group flex flex-col justify-between rounded-xl border border-slate-800 bg-[#0f172a] p-3.5 transition-all hover:border-slate-700"
+              key={row.id}
+              className="flex flex-col justify-between rounded-xl border border-slate-800 bg-[#0f172a] p-3.5 transition-all hover:border-slate-700"
             >
               <div>
                 <div className="flex items-center justify-between gap-2 border-b border-slate-800/60 pb-2.5">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-slate-950 border border-slate-800 font-mono text-xs font-bold text-emerald-400">
-                      {srv.name.slice(0, 2).toUpperCase()}
+                  <div className="flex min-w-0 items-center gap-2">
+                    <div
+                      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-slate-800 bg-slate-950 ${row.accent}`}
+                    >
+                      <Icon className="h-4 w-4" />
                     </div>
-                    <div className="min-w-0">
-                      <h3 className="truncate font-mono text-xs font-bold text-white group-hover:text-emerald-400 transition-colors">
-                        {srv.name}
-                      </h3>
-                      <span className="text-[10px] text-slate-400 font-mono">Port {srv.port}</span>
-                    </div>
+                    <h3 className="truncate font-mono text-xs font-bold text-white">{row.name}</h3>
                   </div>
                   <span
-                    className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase ${
-                      isRunning
-                        ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                        : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                    }`}
+                    className={`shrink-0 rounded border px-1.5 py-0.5 font-mono text-[9px] font-bold ${label.className}`}
                   >
-                    <span className={`h-1.5 w-1.5 rounded-full ${isRunning ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
-                    {srv.status}
+                    {label.text}
                   </span>
                 </div>
 
-                <div className="mt-2.5 space-y-1 text-[11px]">
-                  <div className="flex justify-between text-slate-400">
-                    <span>Host Node:</span>
-                    <span className="font-mono text-slate-300">{srv.hostNode || srv.host}</span>
-                  </div>
-                  <div className="flex justify-between text-slate-400">
-                    <span>Category:</span>
-                    <span className="text-slate-300">{srv.category}</span>
-                  </div>
-                  <div className="flex justify-between text-slate-400">
-                    <span>Uptime:</span>
-                    <span className="font-mono text-slate-300">{srv.uptime}</span>
-                  </div>
-                </div>
+                <p className="mt-2.5 text-[11px] leading-relaxed text-slate-400">{row.description}</p>
+
+                {row.health && (
+                  <p className="mt-2 font-mono text-[10px] leading-relaxed text-slate-500">
+                    {row.health.detail}
+                  </p>
+                )}
               </div>
 
-              <div className="mt-3 flex items-center justify-between border-t border-slate-800/80 pt-2.5">
-                <a
-                  href={srv.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center gap-1 font-mono text-[10px] text-slate-400 hover:text-emerald-400 transition-colors"
-                >
-                  <span className="truncate max-w-[120px]">{srv.url}</span>
-                  <ExternalLink className="h-3 w-3 shrink-0" />
-                </a>
-
-                <button
-                  onClick={() => restartService(srv.id)}
-                  className="rounded-md border border-slate-800 bg-slate-950 p-1 text-slate-400 hover:border-emerald-500/40 hover:text-emerald-400 transition-colors"
-                  title="Restart Service"
-                >
-                  <RotateCcw className="h-3 w-3" />
-                </button>
+              <div className="mt-3 flex items-center justify-between border-t border-slate-800/80 pt-2.5 text-[10px]">
+                <span className="font-mono text-slate-600">
+                  {row.health?.checkedAt ? formatRelative(row.health.checkedAt) : 'sin sondeo'}
+                  {row.health?.latencyMs !== null && row.health?.latencyMs !== undefined
+                    ? ` · ${row.health.latencyMs} ms`
+                    : ''}
+                </span>
+                {row.url && (
+                  <a
+                    href={row.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 font-mono text-slate-400 transition-colors hover:text-emerald-400"
+                  >
+                    <span>abrir</span>
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
               </div>
             </div>
           );
         })}
+      </div>
+
+      <div className="flex items-start gap-2 rounded-xl border border-slate-800 bg-[#0f172a] p-4">
+        <Info className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
+        <div>
+          <h3 className="font-mono text-xs font-bold text-slate-200">
+            Por qué no hay un catálogo completo de servicios
+          </h3>
+          <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
+            Enumerar todos los servicios del homelab con CPU, memoria y uptime requeriría leer el
+            demonio Docker de cada host o una fuente de inventario. Montar el socket de Docker en
+            este contenedor queda descartado por seguridad, y Uptime Kuma 2.x no expone una API REST
+            estable para el estado de sus monitores. Hasta que exista una fuente fiable, esta página
+            solo muestra lo que el backend sabe de primera mano.
+          </p>
+        </div>
       </div>
     </div>
   );
