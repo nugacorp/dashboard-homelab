@@ -27,6 +27,7 @@ export function createContext(config: AppConfig, logger: Logger): ServerContext 
   registerSecret(config.proxmox?.tokenSecret);
   registerSecret(config.homeAssistant?.token);
   registerSecret(config.hermes?.apiKey);
+  registerSecret(config.uptimeKumaApiKey);
   registerSecret(config.auth?.sessionSecret);
   registerSecret(config.auth?.passwordHash);
 
@@ -41,7 +42,11 @@ export function createContext(config: AppConfig, logger: Logger): ServerContext 
       : null,
     hermes: config.hermes ? new HermesService(config.hermes, config.upstreamTimeoutMs) : null,
     uptimeKuma: config.uptimeKumaUrl
-      ? new UptimeKumaService(config.uptimeKumaUrl, config.upstreamTimeoutMs)
+      ? new UptimeKumaService(
+          config.uptimeKumaUrl,
+          config.uptimeKumaApiKey,
+          config.upstreamTimeoutMs,
+        )
       : null,
     startedAt: Date.now(),
   };

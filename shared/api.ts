@@ -232,6 +232,41 @@ export interface UptimeKumaStatusDto {
   httpStatus: number | null;
 }
 
+export type UptimeKumaMonitorState =
+  | 'up'
+  | 'down'
+  | 'pending'
+  | 'maintenance'
+  | 'unknown';
+
+export interface UptimeKumaMonitorDto {
+  id: string;
+  name: string;
+  type: string;
+  state: UptimeKumaMonitorState;
+
+  /** Current response time. null for push monitors or unavailable measurements. */
+  responseTimeMs: number | null;
+
+  /** Rolling averages exported by Kuma's Prometheus endpoint. */
+  average1dMs: number | null;
+  average30dMs: number | null;
+  average365dMs: number | null;
+
+  /** Present only for monitor types where Kuma exports certificate metrics. */
+  certificateValid: boolean | null;
+  certificateDaysRemaining: number | null;
+}
+
+export interface UptimeKumaSummaryDto {
+  total: number;
+  up: number;
+  down: number;
+  pending: number;
+  maintenance: number;
+  unknown: number;
+}
+
 /* -------------------------------------------------------------------- auth */
 
 export interface SessionResponse {

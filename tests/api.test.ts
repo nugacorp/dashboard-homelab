@@ -47,6 +47,8 @@ describe('not-configured envelopes', () => {
       '/api/home-assistant/summary',
       '/api/home-assistant/entities',
       '/api/uptime-kuma/status',
+      '/api/uptime-kuma/monitors',
+      '/api/uptime-kuma/summary',
     ]) {
       const res = await fetch(`${running.baseUrl}${path}`);
       expect(res.status, path).toBe(200);

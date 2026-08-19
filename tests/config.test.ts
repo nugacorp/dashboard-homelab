@@ -12,6 +12,7 @@ describe('loadConfig', () => {
     expect(config.hermes).toBeNull();
     expect(config.hermesEnabled).toBe(false);
     expect(config.uptimeKumaUrl).toBeNull();
+    expect(config.uptimeKumaApiKey).toBeNull();
     expect(config.auth).toBeNull();
     expect(config.port).toBe(8080);
   });
