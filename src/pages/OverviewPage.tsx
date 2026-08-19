@@ -1,5 +1,5 @@
 import React from 'react';
-import { Server, Cpu, Layers, ArrowUpRight, Activity, MemoryStick, ExternalLink, Bot } from 'lucide-react';
+import { Server, Cpu, Layers, ArrowUpRight, Activity, MemoryStick } from 'lucide-react';
 import { useHomelab } from '../context/HomelabContext';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { NodeCard } from '../components/cards/NodeCard';
@@ -8,7 +8,7 @@ import { IntegrationsCard } from '../components/cards/IntegrationsCard';
 import { TopologyMap } from '../components/common/TopologyMap';
 import { ResourceGate } from '../components/common/ResourceGate';
 import { IntegrationNotConfigured } from '../components/common/IntegrationNotConfigured';
-import { formatBytes, formatPct, ratioPct, NOT_AVAILABLE } from '../lib/format';
+import { formatBytes, formatPct, ratioPct } from '../lib/format';
 
 /**
  * Overview.
@@ -18,7 +18,7 @@ import { formatBytes, formatPct, ratioPct, NOT_AVAILABLE } from '../lib/format';
  * replacement would need SLOs the homelab does not define yet.
  */
 export const OverviewPage: React.FC = () => {
-  const { cluster, nodes, homeAssistant, hermes, uptimeKuma, setCurrentPage } = useHomelab();
+  const { cluster, nodes, homeAssistant, uptimeKumaSummary, setCurrentPage } = useHomelab();
 
   return (
     <div className="space-y-6 pb-12">
@@ -85,59 +85,113 @@ export const OverviewPage: React.FC = () => {
 
         <IntegrationsCard />
 
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 backdrop-blur-md">
+        <button
+          type="button"
+          onClick={() => setCurrentPage('services')}
+          className="group rounded-2xl border border-slate-800 bg-slate-900/70 p-4 text-left backdrop-blur-md transition-all hover:border-cyan-500/40 hover:bg-slate-900/90"
+        >
           <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-300">
-              Nuga Ops (VM120)
-            </span>
-            <StatusBadge status="running" size="sm" />
-          </div>
-
-          <div className="mt-3 space-y-2 text-xs">
-            <div className="flex items-center justify-between rounded-xl border border-slate-800/70 bg-slate-950/40 px-3 py-2">
-              <span className="text-slate-400">Backend del dashboard</span>
-              <span className="font-mono font-bold text-emerald-400">ONLINE</span>
-            </div>
-
-            <div className="flex items-center justify-between rounded-xl border border-slate-800/70 bg-slate-950/40 px-3 py-2">
-              <span className="text-slate-400">Uptime Kuma</span>
-              {uptimeKuma.data ? (
-                <a
-                  href={uptimeKuma.data.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 font-mono font-bold text-cyan-400 hover:underline"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {uptimeKuma.data.reachable ? 'ACCESIBLE' : 'SIN RESPUESTA'}
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              ) : (
-                <span className="font-mono text-slate-500">
-                  {uptimeKuma.phase === 'not_configured' ? 'NO CONFIGURADO' : NOT_AVAILABLE}
-                </span>
-              )}
-            </div>
-
-            <div className="flex items-center justify-between rounded-xl border border-slate-800/70 bg-slate-950/40 px-3 py-2">
-              <span className="flex items-center gap-1.5 text-slate-400">
-                <Bot className="h-3.5 w-3.5" />
-                Hermes
+            <div className="flex items-center gap-2">
+              <Activity className="h-4 w-4 text-cyan-400" />
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-300">
+                Monitoring
               </span>
+            </div>
+
+            {uptimeKumaSummary.data && (
               <span
-                className={`font-mono font-bold ${
-                  hermes.phase === 'ok' ? 'text-emerald-400' : 'text-slate-500'
+                className={`rounded border px-2 py-0.5 font-mono text-[9px] font-bold ${
+                  uptimeKumaSummary.data.up === uptimeKumaSummary.data.total &&
+                  uptimeKumaSummary.data.total > 0
+                    ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
+                    : 'border-rose-500/20 bg-rose-500/10 text-rose-400'
                 }`}
               >
-                {hermes.phase === 'ok' ? 'CONFIGURADO' : 'NO CONFIGURADO'}
+                {uptimeKumaSummary.data.up}/{uptimeKumaSummary.data.total} UP
               </span>
-            </div>
+            )}
           </div>
 
-          <p className="mt-3 border-t border-slate-800/80 pt-2 text-[11px] text-slate-500">
-            Uptime Kuma se monitoriza como enlace y alcanzabilidad; sus monitores no se leen por API.
-          </p>
-        </div>
+          {uptimeKumaSummary.data ? (
+            <>
+              <div className="mt-3 flex items-baseline gap-2">
+                <span
+                  className={`font-mono text-3xl font-extrabold ${
+                    uptimeKumaSummary.data.down === 0
+                      ? 'text-emerald-400'
+                      : 'text-rose-400'
+                  }`}
+                >
+                  {uptimeKumaSummary.data.up}
+                </span>
+
+                <span className="font-mono text-xs text-slate-400">
+                  / {uptimeKumaSummary.data.total} monitores UP
+                </span>
+              </div>
+
+              <div className="mt-3 grid grid-cols-3 gap-2 border-t border-slate-800/80 pt-3">
+                <div className="rounded-lg border border-slate-800/70 bg-slate-950/40 px-2 py-2">
+                  <div className="text-[9px] uppercase tracking-wider text-slate-500">
+                    Down
+                  </div>
+                  <div
+                    className={`mt-1 font-mono text-sm font-bold ${
+                      uptimeKumaSummary.data.down > 0
+                        ? 'text-rose-400'
+                        : 'text-slate-300'
+                    }`}
+                  >
+                    {uptimeKumaSummary.data.down}
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-slate-800/70 bg-slate-950/40 px-2 py-2">
+                  <div className="text-[9px] uppercase tracking-wider text-slate-500">
+                    Pending
+                  </div>
+                  <div
+                    className={`mt-1 font-mono text-sm font-bold ${
+                      uptimeKumaSummary.data.pending > 0
+                        ? 'text-amber-400'
+                        : 'text-slate-300'
+                    }`}
+                  >
+                    {uptimeKumaSummary.data.pending}
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-slate-800/70 bg-slate-950/40 px-2 py-2">
+                  <div className="text-[9px] uppercase tracking-wider text-slate-500">
+                    Maint.
+                  </div>
+                  <div className="mt-1 font-mono text-sm font-bold text-slate-300">
+                    {uptimeKumaSummary.data.maintenance}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-3 flex items-center justify-between border-t border-slate-800/80 pt-2">
+                <span className="text-[10px] text-slate-500">
+                  Uptime Kuma · datos reales
+                </span>
+
+                <span className="flex items-center gap-1 text-[10px] font-semibold text-cyan-400 group-hover:underline">
+                  Ver Monitoring Center
+                  <ArrowUpRight className="h-3 w-3" />
+                </span>
+              </div>
+            </>
+          ) : (
+            <div className="mt-4 py-4 text-center font-mono text-xs text-slate-500">
+              {uptimeKumaSummary.phase === 'loading'
+                ? 'Consultando Uptime Kuma…'
+                : uptimeKumaSummary.phase === 'not_configured'
+                  ? 'Monitoring no configurado'
+                  : (uptimeKumaSummary.error?.message ?? 'Sin datos de monitoring')}
+            </div>
+          )}
+        </button>
       </div>
 
       {/* Row 2: Home Assistant */}
