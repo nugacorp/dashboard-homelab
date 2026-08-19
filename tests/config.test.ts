@@ -90,6 +90,49 @@ describe('loadConfig', () => {
     expect(config.hermes).toBeNull();
   });
 
+  it('requires a bearer key when Hermes is enabled', () => {
+    expect(() =>
+      loadConfig({
+        ...base,
+        HERMES_ENABLED: 'true',
+        HERMES_API_URL: 'http://192.168.1.88:8642',
+      }),
+    ).toThrow(/HERMES_API_KEY/);
+  });
+
+  it('accepts a complete Hermes configuration without exposing the key', () => {
+    const config = loadConfig({
+      ...base,
+      HERMES_ENABLED: 'true',
+      HERMES_API_URL: 'http://192.168.1.88:8642/',
+      HERMES_API_KEY: 'hermes-test-secret',
+    });
+
+    expect(config.hermesEnabled).toBe(true);
+    expect(config.hermes?.baseUrl).toBe('http://192.168.1.88:8642');
+
+    const rendered = JSON.stringify(describeConfig(config));
+    expect(rendered).not.toContain('hermes-test-secret');
+  });
+
+  it('uses separate defaults for monitoring APIs and Hermes chat', () => {
+    const config = loadConfig({ ...base });
+
+    expect(config.upstreamTimeoutMs).toBe(8000);
+    expect(config.hermesChatTimeoutMs).toBe(60000);
+  });
+
+  it('allows overriding the Hermes chat timeout independently', () => {
+    const config = loadConfig({
+      ...base,
+      UPSTREAM_TIMEOUT_MS: '9000',
+      HERMES_CHAT_TIMEOUT_MS: '45000',
+    });
+
+    expect(config.upstreamTimeoutMs).toBe(9000);
+    expect(config.hermesChatTimeoutMs).toBe(45000);
+  });
+
   it('requires a strong session secret and an scrypt hash', () => {
     expect(() =>
       loadConfig({

@@ -166,6 +166,7 @@ describe('input validation', () => {
     running = await startApp({
       HERMES_ENABLED: 'true',
       HERMES_API_URL: 'http://127.0.0.1:1',
+      HERMES_API_KEY: 'test-hermes-key',
     });
     for (const message of ['', '   ', 'x'.repeat(5000)]) {
       const res = await fetch(`${running.baseUrl}/api/hermes/chat`, {

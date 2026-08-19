@@ -13,7 +13,7 @@
 import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 
-export const APP_VERSION = '1.1.0';
+export const APP_VERSION = '1.2.0';
 
 const trimmed = z.string().trim();
 
@@ -78,6 +78,7 @@ const envSchema = z.object({
   HERMES_ENABLED: booleanish,
   HERMES_API_URL: httpUrl,
   HERMES_API_KEY: optionalString,
+  HERMES_CHAT_TIMEOUT_MS: positiveInt(60_000),
 
   UPTIME_KUMA_URL: httpUrl,
   UPTIME_KUMA_API_KEY: optionalString,
@@ -111,7 +112,7 @@ export interface HomeAssistantConfig {
 
 export interface HermesConfig {
   baseUrl: string;
-  apiKey: string | null;
+  apiKey: string;
 }
 
 export interface AuthConfig {
@@ -127,6 +128,7 @@ export interface AppConfig {
   host: string;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
   upstreamTimeoutMs: number;
+  hermesChatTimeoutMs: number;
   trustProxy: boolean;
   webDistDir: string | null;
   proxmox: ProxmoxConfig | null;
@@ -241,9 +243,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     if (!e.HERMES_API_URL) {
       throw new ConfigError('HERMES_ENABLED is true but HERMES_API_URL is not set.');
     }
+    if (!e.HERMES_API_KEY) {
+      throw new ConfigError('HERMES_ENABLED is true but HERMES_API_KEY is not set.');
+    }
     hermes = {
       baseUrl: normaliseBaseUrl(e.HERMES_API_URL),
-      apiKey: e.HERMES_API_KEY ?? null,
+      apiKey: e.HERMES_API_KEY,
     };
   }
 
@@ -277,6 +282,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     host: e.HOST ?? '0.0.0.0',
     logLevel: e.LOG_LEVEL,
     upstreamTimeoutMs: e.UPSTREAM_TIMEOUT_MS ?? 8000,
+    hermesChatTimeoutMs: e.HERMES_CHAT_TIMEOUT_MS ?? 60_000,
     trustProxy: e.TRUST_PROXY ?? false,
     webDistDir: e.WEB_DIST_DIR ?? null,
     proxmox,
@@ -295,6 +301,7 @@ export function describeConfig(config: AppConfig): Record<string, string> {
     nodeEnv: config.nodeEnv,
     listen: `${config.host}:${config.port}`,
     upstreamTimeoutMs: String(config.upstreamTimeoutMs),
+    hermesChatTimeoutMs: String(config.hermesChatTimeoutMs),
     proxmox: config.proxmox
       ? `configured (${config.proxmox.baseUrl}, ca=${config.proxmox.caCert ? 'yes' : 'no'}, servername=${config.proxmox.tlsServername ?? 'default'})`
       : 'not configured',
