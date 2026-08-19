@@ -7,7 +7,9 @@ import type {
   ProxmoxNodeDto,
   ReadyResponse,
   SessionResponse,
+  UptimeKumaMonitorDto,
   UptimeKumaStatusDto,
+  UptimeKumaSummaryDto,
 } from '@shared/api';
 import { useRawResource, useResource, type Resource } from '../hooks/useResource';
 import { apiGetRaw, apiPost, UNAUTHENTICATED_EVENT } from '../services/api/client';
@@ -67,6 +69,8 @@ interface HomelabContextType {
   homeAssistant: Resource<HomeAssistantSummaryDto>;
   hermes: Resource<HermesStatusDto>;
   uptimeKuma: Resource<UptimeKumaStatusDto>;
+  uptimeKumaMonitors: Resource<UptimeKumaMonitorDto[]>;
+  uptimeKumaSummary: Resource<UptimeKumaSummaryDto>;
 
   isMobileMenuOpen: boolean;
   setIsMobileMenuOpen: (open: boolean) => void;
@@ -178,6 +182,25 @@ export const HomelabProvider: React.FC<{ children: React.ReactNode }> = ({ child
     enabled: canFetch,
   });
 
+  const uptimeKumaMonitors = useResource<UptimeKumaMonitorDto[]>(
+    '/uptime-kuma/monitors',
+    'uptimeKuma',
+    {
+      pollMs: POLL_SLOW_MS,
+      enabled: canFetch,
+      isEmpty: (data) => data.length === 0,
+    },
+  );
+
+  const uptimeKumaSummary = useResource<UptimeKumaSummaryDto>(
+    '/uptime-kuma/summary',
+    'uptimeKuma',
+    {
+      pollMs: POLL_SLOW_MS,
+      enabled: canFetch,
+    },
+  );
+
   // Ctrl/Cmd+K opens the palette; Escape closes every overlay.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -210,6 +233,8 @@ export const HomelabProvider: React.FC<{ children: React.ReactNode }> = ({ child
       homeAssistant,
       hermes,
       uptimeKuma,
+      uptimeKumaMonitors,
+      uptimeKumaSummary,
       isMobileMenuOpen,
       setIsMobileMenuOpen,
       isHermesDrawerOpen,
@@ -230,6 +255,8 @@ export const HomelabProvider: React.FC<{ children: React.ReactNode }> = ({ child
       homeAssistant,
       hermes,
       uptimeKuma,
+      uptimeKumaMonitors,
+      uptimeKumaSummary,
       isMobileMenuOpen,
       isHermesDrawerOpen,
       isCommandPaletteOpen,

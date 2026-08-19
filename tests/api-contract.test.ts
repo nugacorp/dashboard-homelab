@@ -38,6 +38,8 @@ const ENVELOPE_ENDPOINTS = [
   '/home-assistant/entities',
   '/hermes/status',
   '/uptime-kuma/status',
+  '/uptime-kuma/monitors',
+  '/uptime-kuma/summary',
 ];
 
 let running: RunningApp | null = null;

@@ -13,7 +13,7 @@
 import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 
-export const APP_VERSION = '1.0.0';
+export const APP_VERSION = '1.1.0';
 
 const trimmed = z.string().trim();
 
@@ -80,6 +80,7 @@ const envSchema = z.object({
   HERMES_API_KEY: optionalString,
 
   UPTIME_KUMA_URL: httpUrl,
+  UPTIME_KUMA_API_KEY: optionalString,
 
   DASHBOARD_USERNAME: optionalString,
   DASHBOARD_PASSWORD_HASH: optionalString,
@@ -134,6 +135,7 @@ export interface AppConfig {
   /** Distinguishes "flag off" from "flag on but URL missing". */
   hermesEnabled: boolean;
   uptimeKumaUrl: string | null;
+  uptimeKumaApiKey: string | null;
   auth: AuthConfig | null;
 }
 
@@ -282,6 +284,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     hermes,
     hermesEnabled,
     uptimeKumaUrl: e.UPTIME_KUMA_URL ? normaliseBaseUrl(e.UPTIME_KUMA_URL) : null,
+    uptimeKumaApiKey: e.UPTIME_KUMA_API_KEY ?? null,
     auth,
   };
 }
