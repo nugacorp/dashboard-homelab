@@ -208,18 +208,54 @@ export interface HomeAssistantEntityDto {
 export interface HermesStatusDto {
   enabled: boolean;
   reachable: boolean | null;
-  /** Version string when the upstream reports one. */
   version: string | null;
+  platform: string | null;
+  gatewayState: string | null;
+  provider: string | null;
+  model: string | null;
+  connectedPlatforms: string[];
+  activeAgents: number | null;
+  gatewayBusy: boolean | null;
+}
+
+export interface HermesProviderDto {
+  slug: string;
+  name: string;
+  isCurrent: boolean;
+  authenticated: boolean;
+  models: string[];
+  totalModels: number;
+}
+
+export interface HermesModelsDto {
+  activeProvider: string | null;
+  activeModel: string | null;
+  /** Model identifiers exposed by Hermes' OpenAI-compatible /v1/models. */
+  apiModels: string[];
+  /** Authenticated/current providers only; setup metadata is intentionally omitted. */
+  providers: HermesProviderDto[];
 }
 
 export interface HermesChatRequest {
   message: string;
 }
 
+export interface HermesChatUsageDto {
+  promptTokens: number | null;
+  completionTokens: number | null;
+  totalTokens: number | null;
+}
+
 export interface HermesChatResponseDto {
   reply: string;
-  /** Upstream conversation id when provided. */
+  /**
+   * Chat-completions itself does not allocate a Hermes session id.
+   * Session continuity will be added through the dedicated sessions API.
+   */
   conversationId: string | null;
+  model: string | null;
+  finishReason: string | null;
+  usage: HermesChatUsageDto;
   receivedAt: string;
 }
 

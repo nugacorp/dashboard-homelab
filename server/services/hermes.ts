@@ -1,111 +1,290 @@
 /**
- * Hermes integration - FEATURE GATED, off by default.
+ * Hermes Agent API integration.
  *
- * The Hermes agent (v0.20.3, running on VM110) has not been pointed at this
- * dashboard yet, so `HERMES_ENABLED` defaults to false. When the flag is off
- * this service is never constructed and the routes answer `disabled`. Nothing
- * in this file fabricates a reply: if the upstream is missing, unreachable or
- * answers in a shape we do not recognise, that surfaces as an error.
+ * Browser -> NUGA HOME backend -> Hermes Agent.
  *
- * The wire contract below is the one this dashboard will speak. It is written
- * defensively (several common reply field names are accepted) precisely because
- * it has not been validated against the real agent yet.
+ * The Hermes bearer credential never reaches the browser. All upstream
+ * payloads are validated here and normalised into application-owned DTOs.
  */
+
 import { z } from 'zod';
-import type { HermesChatResponseDto, HermesStatusDto } from '../../shared/api.js';
+import type {
+  HermesChatResponseDto,
+  HermesModelsDto,
+  HermesProviderDto,
+  HermesStatusDto,
+} from '../../shared/api.js';
 import type { HermesConfig } from '../config.js';
 import { UpstreamError } from '../errors.js';
-import { probe, requestJson, type ProbeResult } from '../http.js';
+import { requestJson, type ProbeResult } from '../http.js';
 
 const LABEL = 'Hermes';
 
-/** Upper bound on a prompt, enforced before anything leaves this process. */
+/** Upper bound applied before a prompt leaves NUGA HOME. */
 export const MAX_MESSAGE_LENGTH = 4000;
 
-const healthSchema = z
+const platformStateSchema = z
   .object({
-    version: z.string().nullish(),
-    status: z.string().nullish(),
+    state: z.string().nullish(),
   })
   .passthrough();
 
-/**
- * Accepts the field names most agent APIs use for the assistant turn. If none
- * are present we raise UPSTREAM_INVALID_RESPONSE rather than returning "".
- */
-const chatSchema = z
+const detailedHealthSchema = z
   .object({
-    reply: z.string().nullish(),
-    response: z.string().nullish(),
-    message: z.string().nullish(),
-    text: z.string().nullish(),
-    content: z.string().nullish(),
-    conversation_id: z.string().nullish(),
-    conversationId: z.string().nullish(),
+    status: z.string(),
+    platform: z.string().nullish(),
+    version: z.string().nullish(),
+    gateway_state: z.string().nullish(),
+    platforms: z.record(platformStateSchema).optional(),
+    active_agents: z.number().int().nonnegative().nullish(),
+    gateway_busy: z.boolean().nullish(),
   })
   .passthrough();
+
+const modelListSchema = z
+  .object({
+    object: z.string().optional(),
+    data: z.array(
+      z
+        .object({
+          id: z.string(),
+        })
+        .passthrough(),
+    ),
+  })
+  .passthrough();
+
+const providerSchema = z
+  .object({
+    slug: z.string(),
+    name: z.string(),
+    is_current: z.boolean().optional(),
+    authenticated: z.boolean().optional(),
+    models: z.array(z.string()).optional(),
+    total_models: z.number().int().nonnegative().optional(),
+  })
+  .passthrough();
+
+const modelOptionsSchema = z
+  .object({
+    providers: z.array(providerSchema),
+    model: z.string().nullish(),
+    provider: z.string().nullish(),
+  })
+  .passthrough();
+
+const chatCompletionSchema = z
+  .object({
+    model: z.string().nullish(),
+    choices: z
+      .array(
+        z
+          .object({
+            index: z.number().int().nonnegative().optional(),
+            message: z
+              .object({
+                role: z.string().optional(),
+                content: z.string().nullish(),
+              })
+              .passthrough(),
+            finish_reason: z.string().nullish(),
+          })
+          .passthrough(),
+      )
+      .min(1),
+    usage: z
+      .object({
+        prompt_tokens: z.number().int().nonnegative().optional(),
+        completion_tokens: z.number().int().nonnegative().optional(),
+        total_tokens: z.number().int().nonnegative().optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
+function invalidPayload(detail: string): UpstreamError {
+  return new UpstreamError(
+    'UPSTREAM_INVALID_RESPONSE',
+    `${LABEL} returned an unexpected ${detail} payload.`,
+  );
+}
 
 export class HermesService {
   readonly #config: HermesConfig;
   readonly #timeoutMs: number;
+  readonly #chatTimeoutMs: number;
 
-  constructor(config: HermesConfig, timeoutMs: number) {
+  constructor(
+    config: HermesConfig,
+    timeoutMs: number,
+    chatTimeoutMs: number,
+  ) {
     this.#config = config;
     this.#timeoutMs = timeoutMs;
+    this.#chatTimeoutMs = chatTimeoutMs;
   }
 
   get #headers(): Record<string, string> {
-    return this.#config.apiKey ? { authorization: `Bearer ${this.#config.apiKey}` } : {};
+    return {
+      authorization: `Bearer ${this.#config.apiKey}`,
+    };
   }
 
-  async probe(): Promise<ProbeResult> {
-    return probe(`${this.#config.baseUrl}/health`, this.#timeoutMs);
-  }
-
-  async getStatus(): Promise<HermesStatusDto> {
-    try {
-      const raw = await requestJson(`${this.#config.baseUrl}/health`, {
-        method: 'GET',
-        headers: this.#headers,
-        timeoutMs: this.#timeoutMs,
-        label: LABEL,
-      });
-      const parsed = healthSchema.safeParse(raw);
-      return {
-        enabled: true,
-        reachable: true,
-        version: parsed.success ? (parsed.data.version ?? null) : null,
-      };
-    } catch {
-      return { enabled: true, reachable: false, version: null };
-    }
-  }
-
-  async chat(message: string): Promise<HermesChatResponseDto> {
-    const raw = await requestJson(`${this.#config.baseUrl}/chat`, {
-      method: 'POST',
+  async #getDetailedHealth() {
+    const raw = await requestJson(`${this.#config.baseUrl}/health/detailed`, {
+      method: 'GET',
       headers: this.#headers,
-      json: { message },
       timeoutMs: this.#timeoutMs,
       label: LABEL,
     });
 
-    const parsed = chatSchema.safeParse(raw);
-    if (!parsed.success) {
-      throw new UpstreamError('UPSTREAM_INVALID_RESPONSE', `${LABEL} returned an unexpected payload.`);
+    const parsed = detailedHealthSchema.safeParse(raw);
+    if (!parsed.success) throw invalidPayload('health');
+    return parsed.data;
+  }
+
+  async #getModelOptions() {
+    const raw = await requestJson(`${this.#config.baseUrl}/api/model/options`, {
+      method: 'GET',
+      headers: this.#headers,
+      timeoutMs: this.#timeoutMs,
+      label: LABEL,
+    });
+
+    const parsed = modelOptionsSchema.safeParse(raw);
+    if (!parsed.success) throw invalidPayload('model options');
+    return parsed.data;
+  }
+
+  /**
+   * Readiness probe uses the authenticated endpoint. A 200 from /health alone
+   * proves network reachability but would not prove the configured bearer works.
+   */
+  async probe(): Promise<ProbeResult> {
+    const started = Date.now();
+
+    try {
+      await this.#getDetailedHealth();
+
+      return {
+        reachable: true,
+        httpStatus: 200,
+        latencyMs: Date.now() - started,
+      };
+    } catch (err) {
+      return {
+        reachable: false,
+        httpStatus: err instanceof UpstreamError ? err.upstreamStatus : null,
+        latencyMs: Date.now() - started,
+      };
     }
-    const d = parsed.data;
-    const reply = d.reply ?? d.response ?? d.message ?? d.text ?? d.content ?? null;
-    if (!reply) {
+  }
+
+  async getStatus(): Promise<HermesStatusDto> {
+    const [health, options] = await Promise.all([
+      this.#getDetailedHealth(),
+      this.#getModelOptions(),
+    ]);
+
+    const connectedPlatforms = Object.entries(health.platforms ?? {})
+      .filter(([, value]) => value.state === 'connected')
+      .map(([name]) => name);
+
+    return {
+      enabled: true,
+      reachable: true,
+      version: health.version ?? null,
+      platform: health.platform ?? null,
+      gatewayState: health.gateway_state ?? null,
+      provider: options.provider ?? null,
+      model: options.model ?? null,
+      connectedPlatforms,
+      activeAgents: health.active_agents ?? null,
+      gatewayBusy: health.gateway_busy ?? null,
+    };
+  }
+
+  async getModels(): Promise<HermesModelsDto> {
+    const [modelsRaw, options] = await Promise.all([
+      requestJson(`${this.#config.baseUrl}/v1/models`, {
+        method: 'GET',
+        headers: this.#headers,
+        timeoutMs: this.#timeoutMs,
+        label: LABEL,
+      }),
+      this.#getModelOptions(),
+    ]);
+
+    const models = modelListSchema.safeParse(modelsRaw);
+    if (!models.success) throw invalidPayload('models');
+
+    /*
+     * Do not proxy the raw model-options object. It contains provider setup
+     * metadata such as key_env/warning fields that the browser does not need.
+     */
+    const providers: HermesProviderDto[] = options.providers
+      .filter((provider) => provider.authenticated === true || provider.is_current === true)
+      .map((provider) => ({
+        slug: provider.slug,
+        name: provider.name,
+        isCurrent: provider.is_current ?? false,
+        authenticated: provider.authenticated ?? false,
+        models: provider.models ?? [],
+        totalModels: provider.total_models ?? provider.models?.length ?? 0,
+      }));
+
+    return {
+      activeProvider: options.provider ?? null,
+      activeModel: options.model ?? null,
+      apiModels: models.data.data.map((model) => model.id),
+      providers,
+    };
+  }
+
+  async chat(message: string): Promise<HermesChatResponseDto> {
+    const raw = await requestJson(`${this.#config.baseUrl}/v1/chat/completions`, {
+      method: 'POST',
+      headers: this.#headers,
+      json: {
+        model: 'hermes-agent',
+        messages: [
+          {
+            role: 'user',
+            content: message,
+          },
+        ],
+        stream: false,
+      },
+      timeoutMs: this.#chatTimeoutMs,
+      label: LABEL,
+    });
+
+    const parsed = chatCompletionSchema.safeParse(raw);
+    if (!parsed.success) throw invalidPayload('chat completion');
+
+    const choice = parsed.data.choices[0];
+    const reply = choice?.message.content;
+
+    if (!reply || !reply.trim()) {
       throw new UpstreamError(
         'UPSTREAM_INVALID_RESPONSE',
-        `${LABEL} responded without a recognisable reply field.`,
+        `${LABEL} responded without assistant content.`,
       );
     }
 
+    const usage = parsed.data.usage;
+
     return {
       reply,
-      conversationId: d.conversation_id ?? d.conversationId ?? null,
+      conversationId: null,
+      model: parsed.data.model ?? null,
+      finishReason: choice.finish_reason ?? null,
+      usage: {
+        promptTokens: usage?.prompt_tokens ?? null,
+        completionTokens: usage?.completion_tokens ?? null,
+        totalTokens: usage?.total_tokens ?? null,
+      },
       receivedAt: new Date().toISOString(),
     };
   }

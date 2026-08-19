@@ -37,6 +37,7 @@ const ENVELOPE_ENDPOINTS = [
   '/home-assistant/summary',
   '/home-assistant/entities',
   '/hermes/status',
+  '/hermes/models',
   '/uptime-kuma/status',
   '/uptime-kuma/monitors',
   '/uptime-kuma/summary',

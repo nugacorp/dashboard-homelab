@@ -40,7 +40,13 @@ export function createContext(config: AppConfig, logger: Logger): ServerContext 
     homeAssistant: config.homeAssistant
       ? new HomeAssistantService(config.homeAssistant, config.upstreamTimeoutMs, logger)
       : null,
-    hermes: config.hermes ? new HermesService(config.hermes, config.upstreamTimeoutMs) : null,
+    hermes: config.hermes
+      ? new HermesService(
+          config.hermes,
+          config.upstreamTimeoutMs,
+          config.hermesChatTimeoutMs,
+        )
+      : null,
     uptimeKuma: config.uptimeKumaUrl
       ? new UptimeKumaService(
           config.uptimeKumaUrl,
