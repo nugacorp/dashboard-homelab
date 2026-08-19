@@ -6,8 +6,11 @@ left completely alone — separate container, separate data, separate port.
 
 End state: `http://192.168.1.28:8080`.
 
-> Nothing in this document has been executed. It is the procedure to follow, and
-> the checks to run at each step.
+Repository lives at `/opt/nuga-ops/apps/dashboard-homelab`.
+
+> This procedure has been executed: v1.1.0 went live, and v1.2.0 was cut over on
+> top of it. Sections 1-3 describe the one-time setup; *Upgrading* is the part
+> you will use from now on.
 
 ## 0. Before you start
 
@@ -134,10 +137,10 @@ Note the CN you validated against (`pve-dell.dell` above); it goes into
 ## 3. Get the code and write the environment file
 
 ```bash
-sudo mkdir -p /opt/nuga-home && sudo chown "$USER" /opt/nuga-home
-git clone https://github.com/nugacorp/dashboard-homelab.git /opt/nuga-home
-cd /opt/nuga-home
-git checkout refactor/real-homelab-backend   # until the PR is merged
+sudo mkdir -p /opt/nuga-ops/apps && sudo chown "$USER" /opt/nuga-ops/apps
+git clone https://github.com/nugacorp/dashboard-homelab.git           /opt/nuga-ops/apps/dashboard-homelab
+cd /opt/nuga-ops/apps/dashboard-homelab
+git checkout v1.2.0        # deploy a tag, not a moving branch
 
 cp .env.example .env
 chmod 600 .env
@@ -198,11 +201,17 @@ PVE_TLS_SERVERNAME=pve-dell.dell
 HASS_URL=http://192.168.1.158
 HASS_TOKEN=<long-lived token from Home Assistant>
 
-HERMES_ENABLED=false
-HERMES_API_URL=
-HERMES_API_KEY=
+# Hermes is live since v1.2.0. ENABLED=true requires BOTH url and key.
+HERMES_ENABLED=true
+HERMES_API_URL=http://192.168.1.88:8642
+HERMES_API_KEY=<bearer token for the Hermes agent>
+# Chat needs its own budget: inference is far slower than a status call.
+HERMES_CHAT_TIMEOUT_MS=60000
 
-UPTIME_KUMA_URL=http://192.168.1.28:3001
+# Same Kuma instance is reachable on 192.168.1.28 too; both addresses live on
+# enp6s18. Production uses the 10.77.0.20 one.
+UPTIME_KUMA_URL=http://10.77.0.20:3001
+UPTIME_KUMA_API_KEY=<Kuma API key, used only for GET /metrics>
 
 DASHBOARD_USERNAME=ramiro
 DASHBOARD_PASSWORD_HASH=<from npm run hash-password>
@@ -214,21 +223,34 @@ SESSION_TTL_HOURS=12
 
 ## 4. Build and start
 
+`compose.yaml` has **no `build:` stanza**. Production runs pre-built, explicitly
+tagged images so a missing image fails loudly instead of silently deploying
+whatever is in the worktree. Build and tag out of band:
+
 ```bash
-cd /opt/nuga-home
-docker compose up -d --build
-docker compose ps
-docker compose logs -f nuga-home
+cd /opt/nuga-ops/apps/dashboard-homelab
+VERSION=$(node -p "require('./package.json').version")   # e.g. 1.2.0
+sudo docker build -t "nuga-home-dashboard:v${VERSION}" .
+
+# First install only: point :latest at it so compose resolves.
+sudo docker tag "nuga-home-dashboard:v${VERSION}" nuga-home-dashboard:latest
+
+sudo docker compose up -d --no-build nuga-home
+sudo docker compose ps
+sudo docker compose logs -f nuga-home
 ```
+
+Always pass `--no-build`. For upgrades of an existing install, do **not** move
+`:latest` yet — see *Upgrading* below.
 
 Expected startup log — note that no secret value appears:
 
 ```
-INFO  NUGA HOME dashboard 1.0.0 starting
+INFO  NUGA HOME dashboard 1.2.0 starting
 INFO    proxmox: configured (https://192.168.1.99:8006, ca=yes, servername=pve-dell.dell)
 INFO    homeAssistant: configured (http://192.168.1.158)
-INFO    hermes: disabled
-INFO    uptimeKuma: http://192.168.1.28:3001
+INFO    hermes: enabled (http://192.168.1.88:8642, apiKey=set)
+INFO    uptimeKuma: http://10.77.0.20:3001
 INFO    auth: enabled (user=ramiro)
 INFO  Listening on http://0.0.0.0:8080
 ```
@@ -306,25 +328,89 @@ Add an HTTP(s) monitor:
 Use `/live`, not `/ready`: readiness reports upstream problems, and you do not
 want Kuma paging you about the dashboard when the actual fault is Proxmox.
 
-## Updating
+## Upgrading (the cutover procedure)
+
+This is the sequence that put v1.2.0 into production. The safety property is
+that **`:latest` keeps pointing at the version currently known good** for the
+whole window, so rollback never depends on rebuilding anything.
 
 ```bash
-cd /opt/nuga-home
+cd /opt/nuga-ops/apps/dashboard-homelab
 git pull
-docker compose up -d --build
-docker compose logs -f nuga-home
+VERSION=$(node -p "require('./package.json').version")
+
+# 1. Build the new image under its own tag. :latest is NOT touched.
+sudo docker build -t "nuga-home-dashboard:v${VERSION}" .
+
+# 2. Keep an explicit handle on what is running now, for rollback.
+sudo docker tag nuga-home-dashboard:latest      "nuga-home-dashboard:rollback-pre-v${VERSION}"
+
+# 3. Validate as a candidate on loopback before touching production.
+#    Use a copy of .env; auth may be overridden here, never in production.
+sudo docker run -d --name nuga-home-candidate      -p 127.0.0.1:8081:8080 --env-file .env      -v /etc/nuga-home:/etc/nuga-home:ro      "nuga-home-dashboard:v${VERSION}"
+curl -fsS http://127.0.0.1:8081/api/health/ready    # expect the new version, all integrations ok
+
+# 4. Back up .env, then pin the new image without moving :latest.
+cp -a .env ".env.bak.pre-cutover-$(date +%Y%m%d-%H%M%S)"
+printf 'services:
+  nuga-home:
+    image: nuga-home-dashboard:v%s
+' "$VERSION"      > compose.override.yaml
+sudo docker compose config --format json | grep -o '"image":"[^"]*"' | head -1
+
+# 5. Dry run, then cut over.
+sudo docker compose --dry-run up -d --no-build --force-recreate nuga-home
+sudo docker compose up -d --no-build --force-recreate nuga-home
+
+# 6. Wait for health before curling. ~10 s; curling early gives ECONNRESET.
+for i in $(seq 1 30); do
+  H=$(sudo docker inspect -f '{{.State.Health.Status}}' nuga-home)
+  echo "health=$H"; [ "$H" = healthy ] && break; sleep 2
+done
+curl -fsS http://127.0.0.1:8080/api/health/ready
 ```
 
-The container is stateless. Rebuilding loses nothing; users are logged out only
-if `SESSION_SECRET` changes.
+Downtime is a few seconds. Sessions survive: `SESSION_SECRET` is unchanged.
+
+Once you are confident (a day or two), consolidate so the deployment is
+self-consistent again — and only then:
+
+```bash
+sudo docker tag "nuga-home-dashboard:v${VERSION}" nuga-home-dashboard:latest
+rm -f compose.override.yaml
+```
+
+Until you do that, `compose.override.yaml` is what pins production, and
+`:latest` is your rollback anchor. Do not remove one without the other.
 
 ## Rolling back
 
 ```bash
-git log --oneline -5
-git checkout <previous-commit>
-docker compose up -d --build
+cd /opt/nuga-ops/apps/dashboard-homelab
+
+# 1. Drop the pin. :latest still points at the previous good version.
+rm -f compose.override.yaml
+
+# 2. If rolling back ACROSS the v1.2.0 boundary, Hermes must go back off.
+#    v1.1.0 speaks GET /health and POST /chat, which the real agent does not
+#    serve; left enabled it reports `unavailable` and /ready goes `degraded`.
+sed -i 's/^HERMES_ENABLED=true$/HERMES_ENABLED=false/' .env
+grep -c '^HERMES_ENABLED=false$' .env       # must print 1
+
+# 3. Recreate and verify.
+sudo docker compose up -d --no-build --force-recreate nuga-home
+for i in $(seq 1 30); do
+  H=$(sudo docker inspect -f '{{.State.Health.Status}}' nuga-home)
+  echo "health=$H"; [ "$H" = healthy ] && break; sleep 2
+done
+curl -fsS http://127.0.0.1:8080/api/health/ready
 ```
+
+Trigger criteria: not `healthy` within two minutes, `auth != enabled`, or
+Proxmox / Home Assistant reporting `unavailable` after the cutover.
+
+Step 2 is the one that is easy to forget and the reason a rollback can look
+"successful" while quietly reporting `degraded`.
 
 ## Operational notes
 
@@ -356,13 +442,19 @@ docker compose up -d --build
 - **Resource use**: idle memory is well under 200 MB, which leaves plenty of the
   VM's 4 GB for Uptime Kuma.
 
-## Still to validate on the target
+## Validated on the target
 
-These could not be verified from the development workstation and must be
-confirmed on VM120:
+Confirmed on VM120 against the live systems:
 
-- [ ] Proxmox with a real token: `ready` reports `proxmox: ok`
-- [ ] TLS with the real cluster CA and `PVE_TLS_SERVERNAME`
-- [ ] Home Assistant with a real long-lived token: `homeAssistant: ok`
-- [ ] `docker compose up --build` completes and the healthcheck passes
-- [ ] Node/VM/LXC figures match the Proxmox web UI
+- [x] Proxmox with a privsep token: `ready` reports `proxmox: ok` (PVE 9.2.10)
+- [x] TLS with the real cluster CA and `PVE_TLS_SERVERNAME=pve-dell.dell`
+- [x] Home Assistant with a long-lived token: `homeAssistant: ok` (2026.8.2)
+- [x] Uptime Kuma: `uptimeKuma: ok`
+- [x] Hermes end to end, including a real chat turn (v1.2.0)
+- [x] Image builds, healthcheck passes, container runs unprivileged read-only
+- [x] Cutover and rollback both exercised against production
+
+Still open:
+
+- [ ] Node/VM/LXC figures spot-checked against the Proxmox web UI
+- [ ] DHCP reservation for VM120 (still a lease)

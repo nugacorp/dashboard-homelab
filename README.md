@@ -7,8 +7,8 @@ and says so plainly when something is not configured.
 ```
 Browser  ──►  NUGA HOME (Node/Express + React)  ──►  Proxmox VE API   (GET only)
                                                 ──►  Home Assistant   (GET only)
-                                                ──►  Hermes           (feature gated)
-                                                ──►  Uptime Kuma      (reachability)
+                                                ──►  Hermes Agent     (status, models, chat)
+                                                ──►  Uptime Kuma      (reachability + /metrics)
 ```
 
 The browser never talks to Proxmox, Home Assistant or Hermes directly. Tokens
@@ -39,8 +39,11 @@ of it has been removed. The rules it now follows:
 | --- | --- | --- |
 | Proxmox VE | Read-only, GET only | Cluster, nodes, VMs, LXC, storage |
 | Home Assistant | Read-only, GET only | Version, entities, domains, availability |
-| Hermes | Feature gated, off | Contract + health only; no synthesised replies |
-| Uptime Kuma | Reachability + link | Monitor data is not scraped — see `docs/INTEGRATIONS.md` |
+| Hermes | Connected (v1.2.0), feature gated | Status, models, chat — via the backend, never the browser |
+| Uptime Kuma | Reachability + monitors (v1.1.0) | Prometheus `/metrics` with a backend-only API key |
+
+Hermes stays behind `HERMES_ENABLED`, which defaults to `false`. Off means off:
+the composer is disabled and no reply is ever synthesised.
 
 Not integrated, and rendered as such: UniFi, UniFi Protect, Frigate, Coral TPU,
 NAS/TrueNAS/ZFS, Plex, Zigbee, cameras, solar, UPS, energy metering, Starlink
@@ -93,10 +96,17 @@ reports `NOT CONFIGURED` — that is the intended first-run experience.
 ## Production (Docker)
 
 ```bash
-npm run build                       # optional: verify locally first
-docker compose up -d --build
+npm run build                                   # optional: verify locally first
+docker build -t nuga-home-dashboard:v1.2.0 .
+docker tag nuga-home-dashboard:v1.2.0 nuga-home-dashboard:latest   # first install only
+docker compose up -d --no-build
 curl -fsS http://localhost:8080/api/health/live
 ```
+
+`compose.yaml` deliberately has **no `build:` stanza**: production runs
+pre-built, explicitly tagged images that were validated as a candidate first, so
+a missing image fails loudly instead of silently deploying whatever is in the
+worktree. Always pass `--no-build`.
 
 The image is multi-stage: build tooling stays out of the runtime layer, the
 container runs as the unprivileged `node` user with a read-only root filesystem,
@@ -118,8 +128,10 @@ Full annotated list in `.env.example`. Summary:
 | `PVE_CA_CERT_PATH` | recommended | Cluster CA so TLS verification stays on |
 | `PVE_TLS_SERVERNAME` | when using an IP | Hostname to validate the certificate against |
 | `HASS_URL`, `HASS_TOKEN` | together | Home Assistant long-lived token |
-| `HERMES_ENABLED`, `HERMES_API_URL`, `HERMES_API_KEY` | no | Hermes feature gate |
+| `HERMES_ENABLED`, `HERMES_API_URL`, `HERMES_API_KEY` | url+key together when enabled | Hermes feature gate |
+| `HERMES_CHAT_TIMEOUT_MS` | no | Chat-only timeout (default 60000); inference outlasts the 8 s global |
 | `UPTIME_KUMA_URL` | no | Reachability indicator and link target |
+| `UPTIME_KUMA_API_KEY` | for monitors | Backend-only, used for `GET /metrics` |
 | `DASHBOARD_USERNAME`, `DASHBOARD_PASSWORD_HASH`, `SESSION_SECRET` | together | Local login |
 
 An integration is either fully configured or not configured. Setting some but

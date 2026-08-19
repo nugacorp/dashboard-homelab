@@ -14,7 +14,14 @@
 
 services:
   nuga-home:
-    build: .
+    # No `build:` on purpose. Production runs pre-built, explicitly tagged
+    # images that were validated as a candidate first, so Compose must never be
+    # able to build one on the fly: a missing image has to fail loudly instead
+    # of silently deploying whatever happens to be in the worktree.
+    #
+    # Build and tag out of band:
+    #   docker build -t nuga-home-dashboard:vX.Y.Z .
+    # then pin it here or through compose.override.yaml.
     image: nuga-home-dashboard:latest
     container_name: nuga-home
     restart: unless-stopped
