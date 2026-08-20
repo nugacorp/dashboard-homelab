@@ -14,12 +14,16 @@ is the only thing that holds credentials.
                                   │   └── /api routers       │
                                   │        └── services      │
                                   └───────────┬──────────────┘
-                                              │ outbound, GET only
-                        ┌─────────────────────┼─────────────────────┐
-                        ▼                     ▼                     ▼
-                 Proxmox VE API      Home Assistant API     Hermes (gated)
-                 https, private CA   http, bearer token     off by default
+                                              │ outbound
+              ┌───────────────┬───────────────┼───────────────┐
+              ▼               ▼               ▼               ▼
+        Proxmox VE      Home Assistant      Hermes       Uptime Kuma
+        GET only        GET only            GET + chat   GET /metrics
+        https, own CA   http, bearer        bearer       basic auth
 ```
+
+Proxmox and Home Assistant are read-only. Hermes is the one upstream this
+backend `POST`s to, and only to ask for a chat completion.
 
 There are no microservices, no message bus and no database. Session state is a
 signed cookie; cached upstream data lives in memory for a few seconds and is
@@ -128,9 +132,13 @@ Two conventions carry most of the weight:
 
 The Proxmox token is created with privilege separation on (`-privsep 1`) and
 granted `PVEAuditor` on `/` as a token principal in its own right, so its
-ceiling does not move when the user account gains a role. The services issue
-GET and nothing else, and `tests/no-fake-data.test.ts` asserts statically that no
-`POST`/`PUT`/`DELETE` appears in either service file.
+ceiling does not move when the user account gains a role. The Proxmox and Home
+Assistant services issue GET and nothing else, and `tests/no-fake-data.test.ts`
+asserts statically that no `POST`/`PUT`/`DELETE` appears in either service file.
+
+Hermes is exempt from that assertion by design: `POST /v1/chat/completions` asks
+a model for a reply. It changes nothing in the homelab, and it is the only
+outbound write-shaped call in the backend.
 
 Mutating routes still exist — and answer `403 NOT_ENABLED`:
 
@@ -165,7 +173,25 @@ credentials.
 
 ## Frontend state
 
-`useResource` is a small state machine per endpoint:
+Two transports share one state machine, because the API has two body shapes:
+
+| Hook | For | Body |
+| --- | --- | --- |
+| `useResource` | `/proxmox/*`, `/home-assistant/*`, `/hermes/*`, `/uptime-kuma/*` | `ApiEnvelope<T>` |
+| `useRawResource` | `/health/live`, `/health/ready`, `/auth/session` | plain DTO |
+
+Both normalise onto one internal `Outcome` type, so polling, staleness, refresh
+and phase transitions exist in a single place (`usePolledResource`).
+
+Getting this wrong is not hypothetical: v1.0 consumed `/health/ready` with the
+envelope client, whose guard rejected the raw body, and the integrations card
+reported "El backend devolvió un formato inesperado." against a perfectly
+healthy backend. The trap is that `ReadyResponse` *also* has a `status` field —
+meaning `ok | degraded` — so a guard keyed on `status` alone would have failed
+more quietly still. What actually distinguishes an envelope is `data` + `source`.
+`tests/api-contract.test.ts` pins both directions.
+
+The shared state machine is per endpoint:
 
 ```
 loading → ok | empty | not_configured | disabled | error

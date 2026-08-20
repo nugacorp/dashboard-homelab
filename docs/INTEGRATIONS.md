@@ -5,7 +5,10 @@ UI shows when it is absent.
 
 Common rules:
 
-- Every upstream call is a `GET` with a hard timeout and a response size cap.
+- Every upstream call has a hard timeout and a response size cap.
+- Proxmox and Home Assistant are **read-only**: `GET` and nothing else. The only
+  outbound `POST` in the whole backend is a Hermes chat turn, which is a request
+  for a reply, not a change to infrastructure.
 - Payloads are validated with zod and mapped to DTOs in `shared/api.ts`.
 - A value the upstream does not report becomes `null` and renders as `n/d`.
 - A failure never becomes a global 500; it is a `503` envelope on that route.
@@ -114,78 +117,103 @@ dispositivos configurados" and lists what is actually there.
 
 ---
 
-## Hermes — feature gated, off
+## Hermes — connected (since v1.2.0)
 
-**Config:** `HERMES_ENABLED` (default `false`), `HERMES_API_URL`, `HERMES_API_KEY`
+**Config:** `HERMES_ENABLED` (default `false`), `HERMES_API_URL`,
+`HERMES_API_KEY`, `HERMES_CHAT_TIMEOUT_MS` (default `60000`)
 
-Hermes Agent v0.20.3 runs on VM110 (`192.168.1.88`) with Telegram, read-only
-Proxmox and Home Assistant already working. It is **not** wired to this
-dashboard, and this release does not change that.
+Hermes Agent v0.20.3 runs on VM110 (`http://192.168.1.88:8642`) with provider
+`minimax-oauth` and model `MiniMax-M2.7`. Up to v1.1.0 the flag existed but
+nothing was wired; v1.2.0 connects it for real.
+
+`HERMES_ENABLED=true` requires **both** `HERMES_API_URL` and `HERMES_API_KEY`.
+Either one missing is a startup error, not a silent downgrade.
+
+### Endpoints consumed
+
+| Upstream | Used for |
+| --- | --- |
+| `GET /health/detailed` | Readiness probe: gateway state, active agents, version |
+| `GET /api/model/options` | Provider and model inventory |
+| `GET /v1/models` | OpenAI-compatible model list |
+| `POST /v1/chat/completions` | Chat turns |
+
+All authenticated with a bearer token that exists only in the backend process.
+
+The readiness probe deliberately uses the **authenticated** `/health/detailed`
+rather than a bare `/health`. A 200 from an unauthenticated endpoint would prove
+the host is up but not that the configured credential still works, and the
+credential is the part that actually breaks.
+
+### Exposed as
+
+`/api/hermes/status`, `/api/hermes/models`, `POST /api/hermes/chat`
+
+Chat carries its own timeout (`HERMES_CHAT_TIMEOUT_MS`, default 60 s) because
+model inference is far slower than a status call. The global
+`UPSTREAM_TIMEOUT_MS` (8 s) still governs every other upstream.
+
+Prompts are capped at 4000 characters before anything leaves NUGA HOME.
 
 ### Behaviour when disabled
+
+With `HERMES_ENABLED=false`:
 
 - `GET /api/hermes/status` → `status: "disabled"`
 - `POST /api/hermes/chat` → `status: "disabled"`, no upstream call
 - UI: "Hermes API no configurada", composer disabled
-- **No reply is ever synthesised.** The previous implementation shipped
-  hand-written answers describing 8 cameras, a Coral TPU at 44 °C and a 12 TB
-  ZFS pool. All of it was fiction and all of it is gone.
-
-### Wire contract (not yet validated)
-
-When enabled, the backend will speak:
-
-```http
-GET  {HERMES_API_URL}/health
-     → 200 { "version"?: string, "status"?: string }
-
-POST {HERMES_API_URL}/chat
-     Authorization: Bearer {HERMES_API_KEY}   (omitted if unset)
-     { "message": "<= 4000 chars" }
-     → 200 { "reply" | "response" | "message" | "text" | "content": string,
-             "conversation_id"?: string }
-```
-
-Several reply field names are accepted precisely because this has not been
-checked against the real agent. If none is present the backend raises
-`UPSTREAM_INVALID_RESPONSE` rather than returning an empty string.
-
-`HERMES_API_KEY` is backend-only. It must never appear in a `VITE_` variable,
-and a test enforces that.
+- **No reply is ever synthesised.** An early prototype shipped hand-written
+  answers about 8 cameras, a Coral TPU and a 12 TB ZFS pool. All fiction, all
+  gone.
 
 Path: `Browser → NUGA backend → Hermes`. Never browser → Hermes.
+`HERMES_API_KEY` is backend-only and must never appear in a `VITE_` variable;
+a test enforces that.
+
+> **Rollback hazard.** v1.1.0 and earlier spoke a speculative contract
+> (`GET /health`, `POST /chat`) that the real agent does not serve. Rolling the
+> image back to v1.1.0 while leaving `HERMES_ENABLED=true` moves Hermes from
+> `disabled` to `unavailable` and makes `/api/health/ready` report `degraded`.
+> **Any rollback to v1.1.0 must also set `HERMES_ENABLED=false`.** v1.1.0 does
+> still start with a v1.2 `.env` — its env schema is not `.strict()`, so the
+> unknown `HERMES_CHAT_TIMEOUT_MS` is ignored rather than rejected.
 
 ---
 
-## Uptime Kuma — reachability only
+## Uptime Kuma — reachability and monitor metrics (since v1.1.0)
 
-**Config:** `UPTIME_KUMA_URL`
+**Config:** `UPTIME_KUMA_URL`, `UPTIME_KUMA_API_KEY`
 
-Running at `http://192.168.1.28:3001` with seven monitors (three PVE nodes, Home
-Assistant, Hermes Core, Raspberry Pi 5, NugaCore Staging).
+Runs on VM120 alongside the dashboard. Production points at
+`http://10.77.0.20:3001`; the same instance also answers on
+`http://192.168.1.28:3001`, because both addresses live on `enp6s18`.
 
-### What is done
+### Endpoints consumed
 
-- `GET {UPTIME_KUMA_URL}` — any HTTP response counts as reachable, including the
-  `302` it returns for an unauthenticated request. A service that answers 302 is
-  up; it just wants a login we deliberately do not perform.
-- The URL is handed to the frontend so it can render a link.
+| Upstream | Used for |
+| --- | --- |
+| `GET {UPTIME_KUMA_URL}` | Reachability. Any HTTP answer counts, including the `302` returned to an unauthenticated request. |
+| `GET {UPTIME_KUMA_URL}/metrics` | Monitor inventory, status, response times, certificate expiry |
 
-### What is deliberately not done
+`/metrics` is Kuma's Prometheus endpoint, authenticated with HTTP Basic where
+the API key is the password and the username is empty. It is consumed **only by
+the backend**; the key never reaches the browser. The Prometheus text is parsed
+and normalised into DTOs owned by this application before anything is served.
 
-Uptime Kuma 2.x has no stable, documented REST API for monitor state. The data
-its own UI shows travels over an internal socket.io channel, and `/metrics`
-requires an API key and returns Prometheus text whose labels are not a
-compatibility promise.
+### Exposed as
 
-Depending on either would mean a reverse-engineered integration that breaks on
-upgrade, so v1 shows reachability and a link and nothing more. Kuma remains the
-source of truth for uptime and alerting; the dashboard does not try to restate
-it.
+`/api/uptime-kuma/status`, `/api/uptime-kuma/monitors`,
+`/api/uptime-kuma/summary`
 
-If this becomes worth revisiting, the maintainable path is Kuma's Prometheus
-`/metrics` endpoint with a dedicated API key, scraped through a documented
-config flag — not screen-scraping the socket protocol.
+### Why `/metrics` and not the socket
+
+Kuma 2.x has no stable, documented REST API for monitor state — its own UI reads
+an internal socket.io channel. Depending on that would be a reverse-engineered
+integration that breaks on upgrade. `/metrics` is documented, authenticated and
+text-stable, which is why it is the surface the dashboard relies on.
+
+Kuma remains the source of truth for alerting. The dashboard restates its
+current state; it does not replace it.
 
 ---
 
