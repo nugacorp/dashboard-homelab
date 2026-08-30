@@ -137,10 +137,10 @@ export interface ProxmoxGuestDto {
   uptimeSeconds: number | null;
   isTemplate: boolean;
   /**
-   * Guest IP is NOT exposed: reading it requires the QEMU guest agent and
-   * privileges beyond the read-only token this dashboard uses. Null by design.
+   * Primary guest IPv4 observed through read-only Proxmox endpoints.
+   * null when the guest agent/interface data is unavailable.
    */
-  ipAddress: null;
+  ipAddress: string | null;
 }
 
 export interface ProxmoxStorageDto {
@@ -285,6 +285,13 @@ export interface UptimeKumaMonitorDto {
   type: string;
   state: UptimeKumaMonitorState;
 
+  /**
+   * Sanitised destination reported by Uptime Kuma.
+   * Examples: 192.168.1.99, 192.168.1.53:53, http://192.168.1.28:8080/.
+   * Credentials, query strings and fragments are never exposed.
+   */
+  target: string | null;
+
   /** Current response time. null for push monitors or unavailable measurements. */
   responseTimeMs: number | null;
 
@@ -305,6 +312,17 @@ export interface UptimeKumaSummaryDto {
   pending: number;
   maintenance: number;
   unknown: number;
+}
+
+/* -------------------------------------------------------------------- logs */
+
+export type NugaLogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+export interface NugaLogEntryDto {
+  timestamp: string;
+  level: NugaLogLevel;
+  message: string;
+  context: Record<string, string>;
 }
 
 /* -------------------------------------------------------------------- auth */

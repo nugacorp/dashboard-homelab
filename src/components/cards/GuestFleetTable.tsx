@@ -11,9 +11,8 @@ import { formatBytes, formatPct, formatUptime, NOT_AVAILABLE } from '../../lib/f
  * posture is visible instead of merely absent. They are inert in the DOM: there
  * is no click handler, and the matching backend routes answer 403 NOT_ENABLED.
  *
- * Guest IP is not a column. Reading it requires the QEMU guest agent plus
- * privileges beyond PVEAuditor, so the old "IP Address" column could only ever
- * have been fiction.
+ * Guest IP is read through Proxmox read-only guest interface endpoints.
+ * It remains null when the guest agent/interface data is unavailable.
  */
 export interface GuestFleetTableProps {
   guests: ProxmoxGuestDto[];
@@ -39,7 +38,10 @@ export const GuestFleetTable: React.FC<GuestFleetTableProps> = ({
     const q = search.toLowerCase().trim();
     return guests.filter((g) => {
       const matchSearch =
-        q === '' || g.name.toLowerCase().includes(q) || String(g.vmid).includes(q);
+        q === '' ||
+        g.name.toLowerCase().includes(q) ||
+        String(g.vmid).includes(q) ||
+        (g.ipAddress?.toLowerCase().includes(q) ?? false);
       const matchNode = nodeFilter === 'ALL' || g.node === nodeFilter;
       const matchStatus = statusFilter === 'ALL' || g.status === statusFilter;
       return matchSearch && matchNode && matchStatus;
@@ -112,6 +114,7 @@ export const GuestFleetTable: React.FC<GuestFleetTableProps> = ({
                 <th className="px-4 py-3.5">{idLabel}</th>
                 <th className="px-4 py-3.5">Nombre</th>
                 <th className="px-4 py-3.5">Nodo</th>
+                <th className="px-4 py-3.5">IP</th>
                 <th className="px-4 py-3.5">Estado</th>
                 <th className="px-4 py-3.5">vCPU</th>
                 <th className="px-4 py-3.5">CPU</th>
@@ -124,7 +127,7 @@ export const GuestFleetTable: React.FC<GuestFleetTableProps> = ({
             <tbody className="divide-y divide-slate-800/60">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-10 text-center text-slate-500">
+                  <td colSpan={11} className="px-4 py-10 text-center text-slate-500">
                     Ningún resultado con los filtros actuales.
                   </td>
                 </tr>
@@ -140,7 +143,14 @@ export const GuestFleetTable: React.FC<GuestFleetTableProps> = ({
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3.5 font-mono text-slate-400">{guest.node}</td>
+                    <td className="px-4 py-3.5 font-mono text-slate-400">
+                      {guest.node}
+                    </td>
+
+                    <td className="px-4 py-3.5 font-mono text-cyan-300">
+                      {guest.ipAddress ?? NOT_AVAILABLE}
+                    </td>
+
                     <td className="px-4 py-3.5">
                       <StatusBadge
                         status={guest.status}

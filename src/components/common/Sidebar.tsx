@@ -88,7 +88,7 @@ export const Sidebar: React.FC = () => {
       icon: Bell,
       badge: degraded > 0 ? String(degraded) : null,
     },
-    { page: 'logs', label: 'Logs', icon: Terminal, badge: 'n/c', muted: true },
+    { page: 'logs', label: 'Logs', icon: Terminal, badge: null },
     { page: 'settings', label: 'Ajustes', icon: Settings, badge: null },
   ];
 

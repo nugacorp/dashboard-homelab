@@ -19,6 +19,7 @@ import { createAuthGuard, createAuthRouter } from './routes/auth.js';
 import { createHealthRouter } from './routes/health.js';
 import { createHermesRouter } from './routes/hermes.js';
 import { createHomeAssistantRouter } from './routes/homeAssistant.js';
+import { createLogsRouter } from './routes/logs.js';
 import { createProxmoxRouter } from './routes/proxmox.js';
 import { createUptimeKumaRouter } from './routes/uptimeKuma.js';
 
@@ -73,6 +74,7 @@ export function createApp(ctx: ServerContext): Express {
   api.use('/home-assistant', createHomeAssistantRouter(ctx));
   api.use('/hermes', createHermesRouter(ctx));
   api.use('/uptime-kuma', createUptimeKumaRouter(ctx));
+  api.use('/logs', createLogsRouter(ctx));
 
   api.use((_req, res) => {
     res.status(404).json({

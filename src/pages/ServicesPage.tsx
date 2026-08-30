@@ -129,6 +129,14 @@ const MonitorRow: React.FC<{ monitor: UptimeKumaMonitorDto }> = ({
         {formatMonitorType(monitor.type)}
       </td>
 
+      <td
+        className="max-w-[300px] px-3 py-3 font-mono text-[10px] text-cyan-200"
+        title={monitor.target ?? 'Destino no reportado por Uptime Kuma'}
+      >
+        <span className="block truncate">
+          {monitor.target ?? '—'}
+        </span>
+      </td>
       <td className="px-3 py-3">
         <span
           className={`inline-flex rounded border px-2 py-0.5 font-mono text-[9px] font-bold ${state.className}`}
@@ -306,11 +314,12 @@ export const ServicesPage: React.FC = () => {
       {monitors.length > 0 && (
         <div className="overflow-hidden rounded-xl border border-slate-800 bg-[#0f172a]">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[920px] text-left">
+            <table className="w-full min-w-[1120px] text-left">
               <thead className="bg-slate-950/50">
                 <tr className="text-[9px] uppercase tracking-wider text-slate-500">
                   <th className="px-3 py-2.5 font-semibold">Monitor</th>
                   <th className="px-3 py-2.5 font-semibold">Tipo</th>
+                  <th className="px-3 py-2.5 font-semibold">Destino</th>
                   <th className="px-3 py-2.5 font-semibold">Estado</th>
                   <th className="px-3 py-2.5 font-semibold">Actual</th>
                   <th className="px-3 py-2.5 font-semibold">1 día</th>

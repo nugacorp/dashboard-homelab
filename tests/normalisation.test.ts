@@ -73,6 +73,45 @@ const PVE_ROUTES = {
       { id: 'lxc/200', type: 'lxc', vmid: 200, name: 'test-ct', node: 'pve-lenovo1', status: 'stopped', cpu: 0, maxcpu: 1, mem: 0, maxmem: 512 * 1024 * 1024, maxdisk: 8 * GiB, uptime: 0, template: 0 },
     ],
   },
+  '/api2/json/nodes/pve-dell/qemu/100/agent/network-get-interfaces': {
+    data: {
+      result: [
+        {
+          name: 'eth0',
+          'ip-addresses': [
+            { 'ip-address': '192.168.1.158', 'ip-address-type': 'ipv4' },
+            { 'ip-address': '172.30.32.1', 'ip-address-type': 'ipv4' },
+          ],
+        },
+      ],
+    },
+  },
+  '/api2/json/nodes/pve-dell/qemu/110/agent/network-get-interfaces': {
+    data: {
+      result: [
+        {
+          name: 'eth0',
+          'ip-addresses': [
+            { 'ip-address': '192.168.1.88', 'ip-address-type': 'ipv4' },
+          ],
+        },
+      ],
+    },
+  },
+  '/api2/json/nodes/pve-lenovo1/qemu/120/agent/network-get-interfaces': {
+    data: {
+      result: [
+        {
+          name: 'eth0',
+          'ip-addresses': [
+            { 'ip-address': '10.77.0.20', 'ip-address-type': 'ipv4' },
+            { 'ip-address': '192.168.1.28', 'ip-address-type': 'ipv4' },
+            { 'ip-address': '172.17.0.1', 'ip-address-type': 'ipv4' },
+          ],
+        },
+      ],
+    },
+  },
   '/api2/json/cluster/resources?type=storage': {
     data: [
       { id: 'storage/pve-dell/local', node: 'pve-dell', storage: 'local', plugintype: 'dir', status: 'available', content: 'iso,vztmpl,backup', disk: 10 * GiB, maxdisk: 100 * GiB, shared: 0 },
@@ -145,10 +184,31 @@ describe('Proxmox normalisation', () => {
     expect(offline.ioDelayPct).toBeNull();
   });
 
-  it('never exposes a guest IP address', async () => {
+  it('reports a primary guest IP when the read-only agent endpoint provides one', async () => {
     upstream = await startFakeUpstream(PVE_ROUTES);
     const guests = await build(upstream.url).getGuests();
-    expect(guests.every((g) => g.ipAddress === null)).toBe(true);
+
+    expect(
+      guests.find((g) => g.vmid === 100)?.ipAddress,
+    ).toBe('192.168.1.158');
+
+    expect(
+      guests.find((g) => g.vmid === 110)?.ipAddress,
+    ).toBe('192.168.1.88');
+
+    // Prefer the ordinary LAN address over backup and container bridges.
+    expect(
+      guests.find((g) => g.vmid === 120)?.ipAddress,
+    ).toBe('192.168.1.28');
+
+    // Stopped/template guests remain unknown rather than invented.
+    expect(
+      guests.find((g) => g.vmid === 900)?.ipAddress,
+    ).toBeNull();
+
+    expect(
+      guests.find((g) => g.vmid === 200)?.ipAddress,
+    ).toBeNull();
   });
 
   it('flags templates instead of hiding them', async () => {

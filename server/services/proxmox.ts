@@ -34,6 +34,8 @@ const NODE_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/;
 /** PVE wraps every payload in { data: ... }. */
 const envelope = <T extends z.ZodTypeAny>(inner: T) => z.object({ data: inner });
 
+const unknownEnvelope = envelope(z.unknown());
+
 /** PVE returns numbers as numbers, but occasionally as numeric strings. */
 const numeric = z.union([z.number(), z.string()]).nullish().transform((v) => {
   if (v === null || v === undefined || v === '') return null;
@@ -178,6 +180,108 @@ function parseLoadAverage(raw: unknown): [number, number, number] | null {
   return [values[0]!, values[1]!, values[2]!];
 }
 
+function normaliseGuestIpv4(raw: string): string | null {
+  const value = raw.trim().replace(/\/\d{1,2}$/, '');
+  const parts = value.split('.');
+
+  if (parts.length !== 4) return null;
+
+  const octets = parts.map(Number);
+
+  if (
+    octets.some(
+      (octet) =>
+        !Number.isInteger(octet) ||
+        octet < 0 ||
+        octet > 255,
+    )
+  ) {
+    return null;
+  }
+
+  if (
+    octets[0] === 0 ||
+    octets[0] === 127 ||
+    (octets[0] === 169 && octets[1] === 254)
+  ) {
+    return null;
+  }
+
+  return value;
+}
+
+function collectGuestIpv4(
+  value: unknown,
+  output: string[] = [],
+): string[] {
+  if (typeof value === 'string') {
+    const matches = value.match(
+      /(?:^|[^0-9])((?:\d{1,3}\.){3}\d{1,3}(?:\/\d{1,2})?)(?=$|[^0-9])/g,
+    );
+
+    for (const rawMatch of matches ?? []) {
+      const candidateMatch = rawMatch.match(
+        /((?:\d{1,3}\.){3}\d{1,3}(?:\/\d{1,2})?)/,
+      );
+
+      if (!candidateMatch) continue;
+
+      const ip = normaliseGuestIpv4(candidateMatch[1]!);
+
+      if (ip && !output.includes(ip)) {
+        output.push(ip);
+      }
+    }
+
+    return output;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectGuestIpv4(item, output);
+    }
+
+    return output;
+  }
+
+  if (value && typeof value === 'object') {
+    for (const item of Object.values(value)) {
+      collectGuestIpv4(item, output);
+    }
+  }
+
+  return output;
+}
+
+function guestIpv4Score(ip: string): number {
+  const [a, b] = ip.split('.').map(Number);
+
+  // The ordinary LAN ranges are preferred over Docker/add-on bridges.
+  if (a === 192 && b === 168) return 400;
+  if (a === 10) return 300;
+  if (a === 172 && b !== undefined && b >= 16 && b <= 31) return 200;
+
+  return 100;
+}
+
+function pickGuestIpv4(value: unknown): string | null {
+  const candidates = collectGuestIpv4(value);
+
+  if (candidates.length === 0) return null;
+
+  return candidates
+    .map((ip, index) => ({
+      ip,
+      index,
+      score: guestIpv4Score(ip),
+    }))
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        a.index - b.index,
+    )[0]!.ip;
+}
+
 /* ------------------------------------------------------------------ service */
 
 export interface ProxmoxSnapshot {
@@ -245,9 +349,17 @@ export class ProxmoxService {
 
   async getGuests(): Promise<ProxmoxGuestDto[]> {
     return this.#cache.get('guests', async () => {
-      const res = await this.#get('/cluster/resources?type=vm', guestResourceSchema);
-      return res.data
-        .filter((r) => r.type === 'qemu' || r.type === 'lxc')
+      const res = await this.#get(
+        '/cluster/resources?type=vm',
+        guestResourceSchema,
+      );
+
+      const guests = res.data
+        .filter(
+          (r) =>
+            r.type === 'qemu' ||
+            r.type === 'lxc',
+        )
         .map<ProxmoxGuestDto>((r) => ({
           vmid: r.vmid ?? 0,
           name: r.name ?? `guest-${r.vmid ?? 0}`,
@@ -262,8 +374,20 @@ export class ProxmoxService {
           uptimeSeconds: r.uptime,
           isTemplate: r.template === 1,
           ipAddress: null,
-        }))
-        .sort((a, b) => a.vmid - b.vmid);
+        }));
+
+      const withIps = await Promise.all(
+        guests.map(async (guest) => ({
+          ...guest,
+          ipAddress:
+            await this.#getGuestIpSafe(guest),
+        })),
+      );
+
+      return withIps.sort(
+        (a, b) =>
+          a.vmid - b.vmid,
+      );
     });
   }
 
@@ -380,6 +504,95 @@ export class ProxmoxService {
 
       return { cluster, nodes, guests };
     });
+  }
+
+  async #getGuestIpSafe(
+    guest: ProxmoxGuestDto,
+  ): Promise<string | null> {
+    if (
+      guest.status !== 'running' ||
+      guest.isTemplate ||
+      !NODE_NAME_RE.test(guest.node) ||
+      !Number.isInteger(guest.vmid) ||
+      guest.vmid <= 0
+    ) {
+      return null;
+    }
+
+    const node =
+      encodeURIComponent(guest.node);
+
+    if (guest.type === 'qemu') {
+      try {
+        const response = await this.#get(
+          `/nodes/${node}/qemu/${guest.vmid}/agent/network-get-interfaces`,
+          unknownEnvelope,
+        );
+
+        return pickGuestIpv4(response.data);
+      } catch (err) {
+        this.#logger.debug(
+          'Proxmox QEMU guest IP unavailable',
+          {
+            vmid: guest.vmid,
+            node: guest.node,
+            reason:
+              err instanceof Error
+                ? err.message
+                : 'unknown',
+          },
+        );
+
+        return null;
+      }
+    }
+
+    try {
+      const response = await this.#get(
+        `/nodes/${node}/lxc/${guest.vmid}/interfaces`,
+        unknownEnvelope,
+      );
+
+      const runtimeIp =
+        pickGuestIpv4(response.data);
+
+      if (runtimeIp) return runtimeIp;
+    } catch (err) {
+      this.#logger.debug(
+        'Proxmox LXC runtime IP unavailable',
+        {
+          vmid: guest.vmid,
+          node: guest.node,
+          reason:
+            err instanceof Error
+              ? err.message
+              : 'unknown',
+        },
+      );
+    }
+
+    try {
+      const response = await this.#get(
+        `/nodes/${node}/lxc/${guest.vmid}/config`,
+        unknownEnvelope,
+      );
+
+      return pickGuestIpv4(response.data);
+    } catch (err) {
+      this.#logger.debug(
+        'Proxmox LXC configured IP unavailable',
+        {
+          vmid: guest.vmid,
+          node: guest.node,
+          reason:
+            err instanceof Error
+              ? err.message
+              : 'unknown',
+        },
+      );
+
+      return null;
+    }
   }
 
   async #getNodeStatus(node: string) {
