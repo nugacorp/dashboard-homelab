@@ -119,26 +119,38 @@ async function startFakeHermes(): Promise<FakeHermes> {
       return;
     }
 
-    if (req.method === 'POST' && path === '/v1/chat/completions') {
+    if (req.method === 'POST' && path === '/api/sessions') {
+      json(res, 201, {
+        id: 'api_test_session',
+        source: 'nuga_home',
+      });
+      return;
+    }
+
+    if (
+      req.method === 'POST' &&
+      path === '/api/sessions/api_test_session/chat'
+    ) {
+      const chatBody = body as { message?: unknown } | null;
+      const reply =
+        chatBody?.message === 'Realízalo de nuevo'
+          ? 'NUGA_CONTEXT_OK'
+          : 'NUGA_TEST_OK';
+
       json(res, 200, {
-        id: 'chatcmpl-test',
-        object: 'chat.completion',
-        created: 1,
-        model: 'hermes-agent',
-        choices: [
-          {
-            index: 0,
-            message: {
-              role: 'assistant',
-              content: 'NUGA_TEST_OK',
-            },
-            finish_reason: 'stop',
-          },
-        ],
+        object: 'hermes.session.chat.completion',
+        session_id: 'api_test_session',
+        message: {
+          role: 'assistant',
+          content: reply,
+        },
         usage: {
           prompt_tokens: 10,
           completion_tokens: 2,
           total_tokens: 12,
+        },
+        runtime: {
+          model: 'MiniMax-M2.7',
         },
       });
       return;
@@ -241,9 +253,9 @@ describe('Hermes Agent real API contract mapping', () => {
     expect(chat.status).toBe('ok');
     expect(chat.data).toMatchObject({
       reply: 'NUGA_TEST_OK',
-      conversationId: null,
-      model: 'hermes-agent',
-      finishReason: 'stop',
+      conversationId: 'api_test_session',
+      model: 'MiniMax-M2.7',
+      finishReason: null,
       usage: {
         promptTokens: 10,
         completionTokens: 2,
@@ -253,23 +265,66 @@ describe('Hermes Agent real API contract mapping', () => {
 
     expect(JSON.stringify(chat)).not.toContain('hermes-test-secret');
 
-    const upstreamChat = upstream.requests.find(
-      (request) => request.path === '/v1/chat/completions',
+    const secondChatRes = await fetch(
+      `${running.baseUrl}/api/hermes/chat`,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: 'Realízalo de nuevo',
+          conversationId: chat.data.conversationId,
+        }),
+      },
     );
 
-    expect(upstreamChat).toBeDefined();
-    expect(upstreamChat?.authorization).toBe(
+    expect(secondChatRes.status).toBe(200);
+
+    const secondChat = (await secondChatRes.json()) as any;
+
+    expect(secondChat.status).toBe('ok');
+    expect(secondChat.data).toMatchObject({
+      reply: 'NUGA_CONTEXT_OK',
+      conversationId: 'api_test_session',
+    });
+
+    expect(JSON.stringify(secondChat)).not.toContain(
+      'hermes-test-secret',
+    );
+
+    const sessionCreates = upstream.requests.filter(
+      (request) => request.path === '/api/sessions',
+    );
+
+    expect(sessionCreates).toHaveLength(1);
+    expect(sessionCreates[0]?.authorization).toBe(
       'Bearer hermes-test-secret',
     );
-    expect(upstreamChat?.body).toEqual({
-      model: 'hermes-agent',
-      messages: [
-        {
-          role: 'user',
-          content: 'Prueba NUGA',
-        },
-      ],
-      stream: false,
+    expect(sessionCreates[0]?.body).toEqual({
+      source: 'nuga_home',
+    });
+
+    const upstreamChats = upstream.requests.filter(
+      (request) =>
+        request.path ===
+        '/api/sessions/api_test_session/chat',
+    );
+
+    expect(upstreamChats).toHaveLength(2);
+
+    expect(upstreamChats[0]?.authorization).toBe(
+      'Bearer hermes-test-secret',
+    );
+    expect(upstreamChats[0]?.body).toEqual({
+      message: 'Prueba NUGA',
+    });
+
+    expect(upstreamChats[1]?.authorization).toBe(
+      'Bearer hermes-test-secret',
+    );
+    expect(upstreamChats[1]?.body).toEqual({
+      message: 'Realízalo de nuevo',
     });
   });
 

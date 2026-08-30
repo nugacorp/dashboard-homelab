@@ -24,6 +24,7 @@ const DISABLED_MESSAGE =
 
 const chatRequestSchema = z.object({
   message: z.string().trim().min(1).max(MAX_MESSAGE_LENGTH),
+  conversationId: z.string().trim().min(1).max(256).nullish(),
 });
 
 function emptyStatus(enabled: boolean): HermesStatusDto {
@@ -117,7 +118,11 @@ export function createHermesRouter(ctx: ServerContext): Router {
       res,
       'hermes',
       ctx.logger,
-      () => ctx.hermes!.chat(parsed.data.message),
+      () =>
+        ctx.hermes!.chat(
+          parsed.data.message,
+          parsed.data.conversationId ?? null,
+        ),
     );
   });
 
