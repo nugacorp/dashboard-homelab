@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
-import { Search, Bell, Sparkles, Menu, Server, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Search, Bell, Sparkles, Menu, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { useHomelab, type NavigationPage } from '../../context/HomelabContext';
-import { formatClock, formatPct } from '../../lib/format';
 
 const PAGE_TITLES: Record<NavigationPage, string> = {
   overview: 'NOC Overview',
@@ -43,6 +42,22 @@ export const Header: React.FC = () => {
   } = useHomelab();
 
   const [showNotifications, setShowNotifications] = useState(false);
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setNow(new Date());
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const clock = now.toLocaleTimeString('es-MX', {
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  });
 
   const failing = ready.data
     ? (Object.entries(ready.data.integrations) as [string, { state: string; detail: string }][])
@@ -108,18 +123,6 @@ export const Header: React.FC = () => {
         >
           <Search className="h-4 w-4" />
         </button>
-
-        {cluster.data && (
-          <div
-            onClick={() => setCurrentPage('proxmox')}
-            className="hidden cursor-pointer items-center gap-2 rounded-lg border border-slate-800 bg-slate-900/50 px-2.5 py-1 text-xs transition-colors hover:bg-slate-900 md:flex"
-          >
-            <Server className="h-3.5 w-3.5 text-cyan-400" />
-            <span className="font-mono text-slate-200">
-              CPU {formatPct(cluster.data.cpuUsagePct, 0)}
-            </span>
-          </div>
-        )}
 
         <div className="relative">
           <button
@@ -189,7 +192,7 @@ export const Header: React.FC = () => {
         </button>
 
         <div className="hidden border-l border-slate-800 pl-3 font-mono text-xs font-bold text-slate-300 md:block">
-          {formatClock(cluster.fetchedAt ?? ready.fetchedAt)}
+          {clock}
         </div>
       </div>
     </header>
