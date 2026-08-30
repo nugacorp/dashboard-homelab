@@ -238,6 +238,10 @@ export interface HermesModelsDto {
 
 export interface HermesChatRequest {
   message: string;
+  /**
+   * Hermes persisted session id. Null/omitted starts a new conversation.
+   */
+  conversationId?: string | null;
 }
 
 export interface HermesChatUsageDto {
@@ -249,8 +253,8 @@ export interface HermesChatUsageDto {
 export interface HermesChatResponseDto {
   reply: string;
   /**
-   * Chat-completions itself does not allocate a Hermes session id.
-   * Session continuity will be added through the dedicated sessions API.
+   * Hermes persisted session id. Reuse this id on the next turn to preserve
+   * the real upstream transcript and tool context.
    */
   conversationId: string | null;
   model: string | null;

@@ -9,6 +9,9 @@ export interface HermesChatProps {
   embedded?: boolean;
 }
 
+const HERMES_CONVERSATION_STORAGE_KEY =
+  'nuga-home.hermes.conversation-id';
+
 /**
  * Hermes chat.
  *
@@ -49,13 +52,39 @@ export const HermesChat: React.FC<HermesChatProps> = ({ embedded = false }) => {
     setInput('');
     setIsSending(true);
 
+    let conversationId: string | null = null;
+
+    try {
+      conversationId =
+        window.sessionStorage.getItem(HERMES_CONVERSATION_STORAGE_KEY);
+    } catch {
+      // Browser storage can be unavailable in hardened/private contexts.
+    }
+
     const result = await apiPost<{ data: HermesChatResponseDto | null; error: { message: string } | null }>(
       '/hermes/chat',
-      { message: text },
+      {
+        message: text,
+        conversationId,
+      },
     );
 
     const stamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     if (result.ok && result.data?.data) {
+      const nextConversationId =
+        result.data.data.conversationId;
+
+      if (nextConversationId) {
+        try {
+          window.sessionStorage.setItem(
+            HERMES_CONVERSATION_STORAGE_KEY,
+            nextConversationId,
+          );
+        } catch {
+          // Continuity still works for the mounted chat if browser storage is unavailable.
+        }
+      }
+
       setMessages((prev) => [
         ...prev,
         { id: `h-${Date.now()}`, sender: 'hermes', timestamp: stamp, text: result.data!.data!.reply },

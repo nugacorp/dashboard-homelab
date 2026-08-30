@@ -73,35 +73,68 @@ const modelOptionsSchema = z
   })
   .passthrough();
 
-const chatCompletionSchema = z
+const sessionCreateSchema = z
   .object({
-    model: z.string().nullish(),
-    choices: z
-      .array(
-        z
-          .object({
-            index: z.number().int().nonnegative().optional(),
-            message: z
-              .object({
-                role: z.string().optional(),
-                content: z.string().nullish(),
-              })
-              .passthrough(),
-            finish_reason: z.string().nullish(),
-          })
-          .passthrough(),
-      )
-      .min(1),
+    id: z.string().optional(),
+    session_id: z.string().optional(),
+    session: z
+      .object({
+        id: z.string().optional(),
+        session_id: z.string().optional(),
+      })
+      .passthrough()
+      .nullish(),
+    data: z
+      .object({
+        id: z.string().optional(),
+        session_id: z.string().optional(),
+      })
+      .passthrough()
+      .nullish(),
+  })
+  .passthrough();
+
+const sessionChatSchema = z
+  .object({
+    session_id: z.string().min(1),
+    message: z
+      .object({
+        role: z.string().optional(),
+        content: z.string().nullish(),
+      })
+      .passthrough(),
     usage: z
       .object({
         prompt_tokens: z.number().int().nonnegative().optional(),
         completion_tokens: z.number().int().nonnegative().optional(),
         total_tokens: z.number().int().nonnegative().optional(),
+        input_tokens: z.number().int().nonnegative().optional(),
+        output_tokens: z.number().int().nonnegative().optional(),
+      })
+      .passthrough()
+      .optional(),
+    runtime: z
+      .object({
+        model: z.string().nullish(),
       })
       .passthrough()
       .optional(),
   })
   .passthrough();
+
+function createdSessionId(
+  value: z.infer<typeof sessionCreateSchema>,
+): string | null {
+  return (
+    value.session?.id ??
+    value.session?.session_id ??
+    value.data?.id ??
+    value.data?.session_id ??
+    value.id ??
+    value.session_id ??
+    null
+  );
+}
 
 function invalidPayload(detail: string): UpstreamError {
   return new UpstreamError(
@@ -242,48 +275,96 @@ export class HermesService {
     };
   }
 
-  async chat(message: string): Promise<HermesChatResponseDto> {
-    const raw = await requestJson(`${this.#config.baseUrl}/v1/chat/completions`, {
-      method: 'POST',
-      headers: this.#headers,
-      json: {
-        model: 'hermes-agent',
-        messages: [
-          {
-            role: 'user',
-            content: message,
+  async chat(
+    message: string,
+    conversationId: string | null = null,
+  ): Promise<HermesChatResponseDto> {
+    let sessionId = conversationId?.trim() || null;
+
+    /*
+     * A NUGA HOME conversation is a real persisted Hermes session.
+     * The browser never receives the Hermes bearer credential; it only keeps
+     * the opaque session id returned through our application-owned DTO.
+     */
+    if (!sessionId) {
+      const createdRaw = await requestJson(
+        `${this.#config.baseUrl}/api/sessions`,
+        {
+          method: 'POST',
+          headers: this.#headers,
+          json: {
+            source: 'nuga_home',
           },
-        ],
-        stream: false,
-      },
-      timeoutMs: this.#chatTimeoutMs,
-      label: LABEL,
-    });
-
-    const parsed = chatCompletionSchema.safeParse(raw);
-    if (!parsed.success) throw invalidPayload('chat completion');
-
-    const choice = parsed.data.choices[0];
-    const reply = choice?.message.content;
-
-    if (!reply || !reply.trim()) {
-      throw new UpstreamError(
-        'UPSTREAM_INVALID_RESPONSE',
-        `${LABEL} responded without assistant content.`,
+          timeoutMs: this.#chatTimeoutMs,
+          label: LABEL,
+        },
       );
+
+      const created = sessionCreateSchema.safeParse(createdRaw);
+
+      if (!created.success) {
+        throw invalidPayload('session creation');
+      }
+
+      sessionId = createdSessionId(created.data);
+
+      if (!sessionId) {
+        throw invalidPayload('session creation');
+      }
+    }
+
+    const raw = await requestJson(
+      `${this.#config.baseUrl}/api/sessions/${encodeURIComponent(sessionId)}/chat`,
+      {
+        method: 'POST',
+        headers: this.#headers,
+        json: {
+          message,
+        },
+        timeoutMs: this.#chatTimeoutMs,
+        label: LABEL,
+      },
+    );
+
+    const parsed = sessionChatSchema.safeParse(raw);
+
+    if (!parsed.success) {
+      throw invalidPayload('session chat');
+    }
+
+    const reply = parsed.data.message.content?.trim();
+
+    if (!reply) {
+      throw invalidPayload('session chat');
     }
 
     const usage = parsed.data.usage;
+    const promptTokens =
+      usage?.prompt_tokens ??
+      usage?.input_tokens ??
+      null;
+    const completionTokens =
+      usage?.completion_tokens ??
+      usage?.output_tokens ??
+      null;
+
+    const totalTokens =
+      usage?.total_tokens ??
+      (
+        promptTokens !== null && completionTokens !== null
+          ? promptTokens + completionTokens
+          : null
+      );
 
     return {
       reply,
-      conversationId: null,
-      model: parsed.data.model ?? null,
-      finishReason: choice.finish_reason ?? null,
+      conversationId: parsed.data.session_id,
+      model: parsed.data.runtime?.model ?? null,
+      finishReason: null,
       usage: {
-        promptTokens: usage?.prompt_tokens ?? null,
-        completionTokens: usage?.completion_tokens ?? null,
-        totalTokens: usage?.total_tokens ?? null,
+        promptTokens,
+        completionTokens,
+        totalTokens,
       },
       receivedAt: new Date().toISOString(),
     };
