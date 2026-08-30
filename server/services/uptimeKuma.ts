@@ -19,6 +19,7 @@ interface WorkingMonitor {
   id: string;
   name: string;
   type: string;
+  target: string | null;
   statusCode: number | null;
   responseTimeMs: number | null;
   average1dMs: number | null;
@@ -74,6 +75,55 @@ function currentResponseMs(value: number): number | null {
   return value;
 }
 
+function targetFromLabels(
+  labels: Record<string, string>,
+  type: string,
+): string | null {
+  // PUSH targets may contain a secret push token, so they are never exposed.
+  if (type === 'push') return null;
+
+  const rawUrl = labels.monitor_url?.trim();
+
+  if (rawUrl) {
+    try {
+      const url = new URL(rawUrl);
+
+      url.username = '';
+      url.password = '';
+      url.search = '';
+      url.hash = '';
+
+      return url.toString();
+    } catch {
+      // Some non-HTTP monitor types put a hostname rather than a URL here.
+      // Fall through to the explicit hostname/port labels instead.
+    }
+  }
+
+  const hostname = labels.monitor_hostname?.trim();
+
+  const rawPort =
+    labels.monitor_port?.trim();
+
+  const port =
+    rawPort &&
+    rawPort.toLowerCase() !== 'null' &&
+    rawPort.toLowerCase() !== 'undefined' &&
+    rawPort !== '0'
+      ? rawPort
+      : null;
+
+  if (!hostname) return null;
+
+  const safeHost =
+    hostname.includes(':') &&
+    !hostname.startsWith('[')
+      ? `[${hostname}]`
+      : hostname;
+
+  return port ? `${safeHost}:${port}` : safeHost;
+}
+
 export function parseUptimeKumaMetrics(text: string): UptimeKumaMonitorDto[] {
   const monitors = new Map<string, WorkingMonitor>();
 
@@ -109,6 +159,10 @@ export function parseUptimeKumaMetrics(text: string): UptimeKumaMonitorDto[] {
         id,
         name: labels.monitor_name ?? `Monitor ${id}`,
         type: labels.monitor_type ?? 'unknown',
+        target: targetFromLabels(
+          labels,
+          labels.monitor_type ?? 'unknown',
+        ),
         statusCode: null,
         responseTimeMs: null,
         average1dMs: null,
@@ -118,6 +172,10 @@ export function parseUptimeKumaMetrics(text: string): UptimeKumaMonitorDto[] {
         certificateDaysRemaining: null,
       };
       monitors.set(id, monitor);
+    }
+
+    if (monitor.target === null) {
+      monitor.target = targetFromLabels(labels, monitor.type);
     }
 
     switch (metric) {
@@ -156,6 +214,7 @@ export function parseUptimeKumaMetrics(text: string): UptimeKumaMonitorDto[] {
         name: monitor.name,
         type: monitor.type,
         state: stateFromCode(monitor.statusCode),
+        target: monitor.target,
         responseTimeMs: monitor.responseTimeMs,
         average1dMs: monitor.average1dMs,
         average30dMs: monitor.average30dMs,

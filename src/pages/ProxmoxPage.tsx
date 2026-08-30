@@ -90,7 +90,14 @@ export const ProxmoxPage: React.FC = () => {
                   }`}
                 >
                   <Server className="h-4 w-4" />
-                  <span>{node.name}</span>
+
+                  <span className="flex flex-col items-start leading-tight">
+                    <span>{node.name}</span>
+                    <span className="font-mono text-[10px] font-normal text-cyan-300">
+                      {node.ip ?? NOT_AVAILABLE}
+                    </span>
+                  </span>
+
                   <span className="font-mono text-[11px] text-slate-400">
                     {formatPct(node.cpuUsagePct, 0)}
                   </span>
@@ -232,6 +239,7 @@ const GuestTable: React.FC<{
     vmid: number;
     name: string;
     status: string;
+    ipAddress: string | null;
     cpuCores: number | null;
     cpuUsagePct: number | null;
     memoryUsedBytes: number | null;
@@ -253,6 +261,7 @@ const GuestTable: React.FC<{
           <tr>
             <th className="px-4 py-3">ID</th>
             <th className="px-4 py-3">Nombre</th>
+            <th className="px-4 py-3">IP</th>
             <th className="px-4 py-3">Estado</th>
             <th className="px-4 py-3">vCPU</th>
             <th className="px-4 py-3">Memoria</th>
@@ -263,7 +272,7 @@ const GuestTable: React.FC<{
         <tbody className="divide-y divide-slate-800/60 bg-slate-900/40">
           {rows.length === 0 ? (
             <tr>
-              <td colSpan={7} className="px-4 py-6 text-center text-slate-500">
+              <td colSpan={8} className="px-4 py-6 text-center text-slate-500">
                 Ninguno en este nodo.
               </td>
             </tr>
@@ -271,7 +280,14 @@ const GuestTable: React.FC<{
             rows.map((row) => (
               <tr key={row.vmid} className="hover:bg-slate-800/50">
                 <td className="px-4 py-3 font-mono font-bold text-cyan-400">{row.vmid}</td>
-                <td className="px-4 py-3 font-medium text-slate-200">{row.name}</td>
+                <td className="px-4 py-3 font-medium text-slate-200">
+                  {row.name}
+                </td>
+
+                <td className="px-4 py-3 font-mono text-cyan-300">
+                  {row.ipAddress ?? NOT_AVAILABLE}
+                </td>
+
                 <td className="px-4 py-3">
                   <StatusBadge status={row.status} size="sm" showPulse={row.status === 'running'} />
                 </td>
