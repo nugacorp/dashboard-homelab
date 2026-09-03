@@ -1,3 +1,14 @@
+---
+name: nuga-home-unifi
+description: Operación segura de UniFi/UCG Max para NUGA HOME: Starlink, WAN/LAN, DHCP, DNS, Zone-Based Firewall, VLANs, mDNS, Protect y API oficial. Usar para diagnóstico y planificación; cambios de red de alto impacto requieren aprobación explícita.
+version: 1.0.0
+author: Ramiro
+platforms: [linux]
+metadata:
+  hermes:
+    tags: [homelab, unifi, ucg-max, networking, starlink, protect, nuga-home]
+---
+
 # UniFi / UCG Max — NUGA HOME Skill
 
 ## Propósito
