@@ -20,8 +20,10 @@ import { createHealthRouter } from './routes/health.js';
 import { createHermesRouter } from './routes/hermes.js';
 import { createHomeAssistantRouter } from './routes/homeAssistant.js';
 import { createLogsRouter } from './routes/logs.js';
+import { createNetworkRouter } from './routes/network.js';
 import { createProxmoxRouter } from './routes/proxmox.js';
 import { createUptimeKumaRouter } from './routes/uptimeKuma.js';
+import { createUnifiRouter } from './routes/unifi.js';
 
 /** Where the built SPA lives relative to the compiled server (dist/server -> dist/web). */
 function resolveWebDir(ctx: ServerContext): string | null {
@@ -74,6 +76,8 @@ export function createApp(ctx: ServerContext): Express {
   api.use('/home-assistant', createHomeAssistantRouter(ctx));
   api.use('/hermes', createHermesRouter(ctx));
   api.use('/uptime-kuma', createUptimeKumaRouter(ctx));
+  api.use('/network', createNetworkRouter(ctx));
+  api.use('/unifi', createUnifiRouter(ctx));
   api.use('/logs', createLogsRouter(ctx));
 
   api.use((_req, res) => {

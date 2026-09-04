@@ -2,6 +2,8 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import type {
   HermesStatusDto,
   HomeAssistantSummaryDto,
+  NetworkStatusDto,
+  UnifiSummaryDto,
   ProxmoxClusterDto,
   ProxmoxGuestDto,
   ProxmoxNodeDto,
@@ -67,6 +69,8 @@ interface HomelabContextType {
   vms: Resource<ProxmoxGuestDto[]>;
   containers: Resource<ProxmoxGuestDto[]>;
   homeAssistant: Resource<HomeAssistantSummaryDto>;
+  network: Resource<NetworkStatusDto>;
+  unifi: Resource<UnifiSummaryDto>;
   hermes: Resource<HermesStatusDto>;
   uptimeKuma: Resource<UptimeKumaStatusDto>;
   uptimeKumaMonitors: Resource<UptimeKumaMonitorDto[]>;
@@ -173,6 +177,14 @@ export const HomelabProvider: React.FC<{ children: React.ReactNode }> = ({ child
     pollMs: POLL_SLOW_MS,
     enabled: canFetch,
   });
+  const network = useResource<NetworkStatusDto>('/network/status', 'nugaOps', {
+    pollMs: POLL_SLOW_MS,
+    enabled: canFetch,
+  });
+  const unifi = useResource<UnifiSummaryDto>('/unifi/summary', 'nugaOps', {
+    pollMs: POLL_SLOW_MS,
+    enabled: canFetch,
+  });
   const hermes = useResource<HermesStatusDto>('/hermes/status', 'hermes', {
     pollMs: POLL_LAZY_MS,
     enabled: canFetch,
@@ -231,6 +243,8 @@ export const HomelabProvider: React.FC<{ children: React.ReactNode }> = ({ child
       vms,
       containers,
       homeAssistant,
+      network,
+      unifi,
       hermes,
       uptimeKuma,
       uptimeKumaMonitors,
@@ -253,6 +267,8 @@ export const HomelabProvider: React.FC<{ children: React.ReactNode }> = ({ child
       vms,
       containers,
       homeAssistant,
+      network,
+      unifi,
       hermes,
       uptimeKuma,
       uptimeKumaMonitors,

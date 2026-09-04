@@ -1,5 +1,5 @@
 import React from 'react';
-import { Server, Cpu, Layers, ArrowUpRight, Activity, MemoryStick } from 'lucide-react';
+import { Server, Cpu, Layers, ArrowUpRight, Activity, MemoryStick, Network } from 'lucide-react';
 import { useHomelab } from '../context/HomelabContext';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { NodeCard } from '../components/cards/NodeCard';
@@ -7,7 +7,6 @@ import { SmartHomeCard } from '../components/cards/SmartHomeCard';
 import { IntegrationsCard } from '../components/cards/IntegrationsCard';
 import { TopologyMap } from '../components/common/TopologyMap';
 import { ResourceGate } from '../components/common/ResourceGate';
-import { IntegrationNotConfigured } from '../components/common/IntegrationNotConfigured';
 import { formatBytes, formatPct, ratioPct } from '../lib/format';
 
 /**
@@ -18,7 +17,7 @@ import { formatBytes, formatPct, ratioPct } from '../lib/format';
  * replacement would need SLOs the homelab does not define yet.
  */
 export const OverviewPage: React.FC = () => {
-  const { cluster, nodes, homeAssistant, uptimeKumaSummary, setCurrentPage } = useHomelab();
+  const { cluster, nodes, homeAssistant, network, uptimeKumaSummary, setCurrentPage } = useHomelab();
 
   return (
     <div className="space-y-6 pb-12">
@@ -208,13 +207,101 @@ export const OverviewPage: React.FC = () => {
           )}
         </ResourceGate>
 
-        <IntegrationNotConfigured
-          name="Uplink de internet y red"
-          tone="not_configured"
-          description="No hay controlador de red ni telemetría de Starlink integrados. Esta tarjeta mostraba antes 245 Mbps y 32 ms; eran valores simulados."
-          requirement="Pendiente de desplegar un controlador de red con API."
-          compact
-        />
+        <button
+          type="button"
+          onClick={() => setCurrentPage('network')}
+          className="group rounded-2xl border border-slate-800 bg-slate-900/70 p-4 text-left backdrop-blur-md transition-all hover:border-cyan-500/40 hover:bg-slate-900/90"
+        >
+          <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+            <div className="flex items-center gap-2">
+              <Network className="h-4 w-4 text-cyan-400" />
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-300">
+                Red y DNS
+              </span>
+            </div>
+
+            {network.data && (
+              <span
+                className={`rounded border px-2 py-0.5 font-mono text-[9px] font-bold ${
+                  network.data.gatewayHttpsReachable && network.data.dnsExternalResolution
+                    ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
+                    : 'border-amber-500/20 bg-amber-500/10 text-amber-400'
+                }`}
+              >
+                {network.data.gatewayHttpsReachable && network.data.dnsExternalResolution
+                  ? 'OK'
+                  : 'DEGRADED'}
+              </span>
+            )}
+          </div>
+
+          {network.data ? (
+            <>
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <div>
+                  <div className="text-[9px] uppercase tracking-wider text-slate-500">
+                    Gateway
+                  </div>
+                  <div className="mt-1 font-mono text-sm font-bold text-slate-200">
+                    {network.data.gatewayIp}
+                  </div>
+                  <div
+                    className={`mt-1 text-[10px] ${
+                      network.data.gatewayHttpsReachable
+                        ? 'text-emerald-400'
+                        : 'text-rose-400'
+                    }`}
+                  >
+                    {network.data.gatewayHttpsReachable
+                      ? 'HTTPS accesible'
+                      : 'Sin respuesta HTTPS'}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-[9px] uppercase tracking-wider text-slate-500">
+                    Technitium DNS
+                  </div>
+                  <div className="mt-1 font-mono text-sm font-bold text-slate-200">
+                    {network.data.dnsServer}
+                  </div>
+                  <div
+                    className={`mt-1 text-[10px] ${
+                      network.data.dnsExternalResolution
+                        ? 'text-emerald-400'
+                        : 'text-rose-400'
+                    }`}
+                  >
+                    {network.data.dnsExternalResolution
+                      ? 'Resolución externa OK'
+                      : 'Resolución externa falló'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-3 flex items-center justify-between border-t border-slate-800/80 pt-2">
+                <span className="font-mono text-[10px] text-slate-500">
+                  {network.data.localDomain} ·{' '}
+                  {network.data.records.filter((record) => record.ipv4 !== null).length}/
+                  {network.data.records.length} registros
+                </span>
+
+                <span className="flex items-center gap-1 text-[10px] font-semibold text-cyan-400 group-hover:underline">
+                  Ver red
+                  <ArrowUpRight className="h-3 w-3" />
+                </span>
+              </div>
+            </>
+          ) : (
+            <div className="mt-4 py-4 text-center font-mono text-xs text-slate-500">
+              {network.phase === 'loading'
+                ? 'Consultando red…'
+                : network.phase === 'not_configured'
+                  ? 'Observabilidad de red no configurada'
+                  : (network.error?.message ?? 'Sin datos de red')}
+            </div>
+          )}
+        </button>
       </div>
 
       {/* Row 3: nodes */}

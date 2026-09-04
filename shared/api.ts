@@ -314,6 +314,86 @@ export interface UptimeKumaSummaryDto {
   unknown: number;
 }
 
+/* -------------------------------------------------------------- network */
+
+export interface NetworkDnsRecordDto {
+  name: string;
+  fqdn: string;
+  ipv4: string | null;
+}
+
+export interface NetworkStatusDto {
+  /** Configured LAN gateway address. */
+  gatewayIp: string;
+  /** TCP/443 reachability measured by the backend. */
+  gatewayHttpsReachable: boolean;
+  gatewayLatencyMs: number | null;
+
+  /** DNS server queried directly by the backend. */
+  dnsServer: string;
+  localDomain: string;
+  dnsExternalResolution: boolean;
+  dnsLatencyMs: number | null;
+
+  /** Authoritative local names resolved live through the configured DNS server. */
+  records: NetworkDnsRecordDto[];
+
+  /** ISO-8601 timestamp of this observation. */
+  checkedAt: string;
+}
+
+/* ------------------------------------------------------------------- unifi */
+
+export interface UnifiDeviceDto {
+  id: string;
+  name: string | null;
+  model: string | null;
+  ipAddress: string | null;
+  state: string | null;
+  firmwareVersion: string | null;
+  firmwareUpdatable: boolean | null;
+  uptimeSec: number | null;
+  cpuUtilizationPct: number | null;
+  memoryUtilizationPct: number | null;
+  txRateBps: number | null;
+  rxRateBps: number | null;
+}
+
+export interface UnifiClientDto {
+  id: string;
+  type: string | null;
+  name: string | null;
+  ipAddress: string | null;
+  macAddress: string | null;
+  connectedAt: string | null;
+}
+
+export interface UnifiNetworkDto {
+  id: string;
+  name: string | null;
+  management: string | null;
+  enabled: boolean | null;
+  vlanId: number | null;
+  default: boolean | null;
+}
+
+export interface UnifiWanDto {
+  id: string | null;
+  name: string | null;
+}
+
+export interface UnifiSummaryDto {
+  applicationVersion: string | null;
+  siteId: string;
+  siteName: string | null;
+  devices: UnifiDeviceDto[];
+  clients: UnifiClientDto[];
+  networks: UnifiNetworkDto[];
+  wans: UnifiWanDto[];
+  wifiBroadcastCount: number;
+  checkedAt: string;
+}
+
 /* -------------------------------------------------------------------- logs */
 
 export type NugaLogLevel = 'debug' | 'info' | 'warn' | 'error';

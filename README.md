@@ -9,6 +9,8 @@ Browser  ──►  NUGA HOME (Node/Express + React)  ──►  Proxmox VE API 
                                                 ──►  Home Assistant   (GET only)
                                                 ──►  Hermes Agent     (status, models, chat)
                                                 ──►  Uptime Kuma      (reachability + /metrics)
+                                                ──►  Network / DNS    (GET/probes only)
+                                                ──►  UniFi Network    (official local API, GET only)
 ```
 
 The browser never talks to Proxmox, Home Assistant or Hermes directly. Tokens
@@ -23,8 +25,8 @@ of it has been removed. The rules it now follows:
   it, the UI renders `n/d`, never `0` and never a plausible-looking value.
 - **`0`, `unknown`, `not configured` and `offline` are four different states**
   and are rendered differently.
-- **Systems that do not exist say so.** Network, UniFi, Starlink, Cameras,
-  Energy, Logs, NAS/ZFS, PBS and Immich render a `NOT CONFIGURED` panel that
+- **Systems that do not exist say so.** Starlink, Cameras, Energy, Logs,
+  NAS/ZFS, PBS and Immich render a `NOT CONFIGURED` panel that
   explains what is missing.
 - **No fabricated success.** Write operations answer `403 NOT_ENABLED`; Hermes
   answers nothing at all when it is disabled.
@@ -41,11 +43,13 @@ of it has been removed. The rules it now follows:
 | Home Assistant | Read-only, GET only | Version, entities, domains, availability |
 | Hermes | Connected (v1.2.0), feature gated | Status, models, chat — via the backend, never the browser |
 | Uptime Kuma | Reachability + monitors (v1.1.0) | Prometheus `/metrics` with a backend-only API key |
+| Network / DNS | Read-only observability | Gateway reachability, Technitium external resolution and authoritative `localdomain` inventory |
+| UniFi Network | Read-only, official local API | Network 10.6.101, site, adopted devices, clients, networks/VLANs, WANs and device statistics |
 
 Hermes stays behind `HERMES_ENABLED`, which defaults to `false`. Off means off:
 the composer is disabled and no reply is ever synthesised.
 
-Not integrated, and rendered as such: UniFi, UniFi Protect, Frigate, Coral TPU,
+Not integrated, and rendered as such: UniFi Protect, Frigate, Coral TPU,
 NAS/TrueNAS/ZFS, Plex, Zigbee, cameras, solar, UPS, energy metering, Starlink
 telemetry, log aggregation, Docker container inventory.
 
@@ -132,6 +136,10 @@ Full annotated list in `.env.example`. Summary:
 | `HERMES_CHAT_TIMEOUT_MS` | no | Chat-only timeout (default 60000); inference outlasts the 8 s global |
 | `UPTIME_KUMA_URL` | no | Reachability indicator and link target |
 | `UPTIME_KUMA_API_KEY` | for monitors | Backend-only, used for `GET /metrics` |
+| `NETWORK_DNS_SERVER`, `NETWORK_LOCAL_DOMAIN`, `NETWORK_GATEWAY_IP` | together | Read-only LAN/DNS observability |
+| `UNIFI_API_URL`, `UNIFI_API_KEY` | together | Official UniFi Network local API |
+| `UNIFI_CA_CERT_PATH` | recommended | UCG self-signed certificate so TLS verification remains enabled |
+| `UNIFI_TLS_SERVERNAME` | when connecting by IP | Certificate hostname, currently `unifi.local` |
 | `DASHBOARD_USERNAME`, `DASHBOARD_PASSWORD_HASH`, `SESSION_SECRET` | together | Local login |
 
 An integration is either fully configured or not configured. Setting some but
@@ -155,7 +163,7 @@ to something and report it as working.
    wildcard origin.
 8. Local login: scrypt password hash, HMAC-signed HttpOnly cookie with
    `SameSite=Lax`, and a per-IP login throttle. No session database.
-9. Proxmox and Home Assistant are strictly read-only in this release. The
+9. Proxmox, Home Assistant and UniFi Network are strictly read-only in this release. The
    Proxmox token uses privilege separation (`-privsep 1`) with its own
    `PVEAuditor` grant, so widening the user later does not widen the token.
 10. The Docker socket is never mounted.
@@ -221,10 +229,9 @@ turn anything on or off.
 
 ## Hermes
 
-Hermes runs on VM110 and is not wired to the dashboard yet. `HERMES_ENABLED`
-defaults to `false`; the UI shows "Hermes API no configurada" and no request is
-made. The wire contract the backend will speak is described in
-`docs/INTEGRATIONS.md` and has not been validated against the real agent.
+Hermes runs on VM110 and is connected to the dashboard backend.
+`HERMES_ENABLED` remains the explicit feature gate; credentials stay backend-only.
+The validated contract is documented in `docs/INTEGRATIONS.md`.
 
 ## Documentation
 

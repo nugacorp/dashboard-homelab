@@ -11,6 +11,7 @@
  *    prints its value.
  */
 import { readFileSync } from 'node:fs';
+import { isIP } from 'node:net';
 import { z } from 'zod';
 
 export const APP_VERSION = '1.3.0';
@@ -83,6 +84,15 @@ const envSchema = z.object({
   UPTIME_KUMA_URL: httpUrl,
   UPTIME_KUMA_API_KEY: optionalString,
 
+  NETWORK_DNS_SERVER: optionalString,
+  NETWORK_LOCAL_DOMAIN: optionalString,
+  NETWORK_GATEWAY_IP: optionalString,
+
+  UNIFI_API_URL: httpUrl,
+  UNIFI_API_KEY: optionalString,
+  UNIFI_CA_CERT_PATH: optionalString,
+  UNIFI_TLS_SERVERNAME: optionalString,
+
   DASHBOARD_USERNAME: optionalString,
   DASHBOARD_PASSWORD_HASH: optionalString,
   SESSION_SECRET: optionalString,
@@ -115,6 +125,20 @@ export interface HermesConfig {
   apiKey: string;
 }
 
+export interface NetworkConfig {
+  dnsServer: string;
+  localDomain: string;
+  gatewayIp: string;
+}
+
+export interface UnifiConfig {
+  baseUrl: string;
+  apiKey: string;
+  caCert: string | null;
+  caCertPath: string | null;
+  tlsServername: string | null;
+}
+
 export interface AuthConfig {
   username: string;
   passwordHash: string;
@@ -138,6 +162,8 @@ export interface AppConfig {
   hermesEnabled: boolean;
   uptimeKumaUrl: string | null;
   uptimeKumaApiKey: string | null;
+  network: NetworkConfig | null;
+  unifi: UnifiConfig | null;
   auth: AuthConfig | null;
 }
 
@@ -252,6 +278,70 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     };
   }
 
+  let network: NetworkConfig | null = null;
+  if (
+    requireGroup('Network observability', {
+      NETWORK_DNS_SERVER: e.NETWORK_DNS_SERVER,
+      NETWORK_LOCAL_DOMAIN: e.NETWORK_LOCAL_DOMAIN,
+      NETWORK_GATEWAY_IP: e.NETWORK_GATEWAY_IP,
+    })
+  ) {
+    if (isIP(e.NETWORK_DNS_SERVER!) !== 4) {
+      throw new ConfigError('NETWORK_DNS_SERVER must be an IPv4 address.');
+    }
+    if (isIP(e.NETWORK_GATEWAY_IP!) !== 4) {
+      throw new ConfigError('NETWORK_GATEWAY_IP must be an IPv4 address.');
+    }
+
+    const localDomain = e.NETWORK_LOCAL_DOMAIN!
+      .replace(/^\.+|\.+$/g, '')
+      .toLowerCase();
+
+    if (!localDomain || !/^[a-z0-9.-]+$/.test(localDomain)) {
+      throw new ConfigError('NETWORK_LOCAL_DOMAIN is not a valid DNS domain.');
+    }
+
+    network = {
+      dnsServer: e.NETWORK_DNS_SERVER!,
+      localDomain,
+      gatewayIp: e.NETWORK_GATEWAY_IP!,
+    };
+  }
+
+  let unifi: UnifiConfig | null = null;
+  if (
+    requireGroup('UniFi Network', {
+      UNIFI_API_URL: e.UNIFI_API_URL,
+      UNIFI_API_KEY: e.UNIFI_API_KEY,
+    })
+  ) {
+    let caCert: string | null = null;
+
+    if (e.UNIFI_CA_CERT_PATH) {
+      try {
+        caCert = readFileSync(e.UNIFI_CA_CERT_PATH, 'utf8');
+      } catch {
+        throw new ConfigError(
+          `UNIFI_CA_CERT_PATH could not be read: ${e.UNIFI_CA_CERT_PATH}`,
+        );
+      }
+
+      if (!caCert.includes('BEGIN CERTIFICATE')) {
+        throw new ConfigError(
+          `UNIFI_CA_CERT_PATH does not contain a PEM certificate: ${e.UNIFI_CA_CERT_PATH}`,
+        );
+      }
+    }
+
+    unifi = {
+      baseUrl: normaliseBaseUrl(e.UNIFI_API_URL!),
+      apiKey: e.UNIFI_API_KEY!,
+      caCert,
+      caCertPath: e.UNIFI_CA_CERT_PATH ?? null,
+      tlsServername: e.UNIFI_TLS_SERVERNAME ?? null,
+    };
+  }
+
   let auth: AuthConfig | null = null;
   if (
     requireGroup('Dashboard auth', {
@@ -291,6 +381,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     hermesEnabled,
     uptimeKumaUrl: e.UPTIME_KUMA_URL ? normaliseBaseUrl(e.UPTIME_KUMA_URL) : null,
     uptimeKumaApiKey: e.UPTIME_KUMA_API_KEY ?? null,
+    network,
+    unifi,
     auth,
   };
 }
@@ -314,6 +406,12 @@ export function describeConfig(config: AppConfig): Record<string, string> {
         ? 'enabled but unusable'
         : 'disabled',
     uptimeKuma: config.uptimeKumaUrl ?? 'not configured',
+    network: config.network
+      ? `configured (dns=${config.network.dnsServer}, zone=${config.network.localDomain}, gateway=${config.network.gatewayIp})`
+      : 'not configured',
+    unifi: config.unifi
+      ? `configured (${config.unifi.baseUrl}, apiKey=set, ca=${config.unifi.caCert ? 'yes' : 'no'}, servername=${config.unifi.tlsServername ?? 'default'})`
+      : 'not configured',
     auth: config.auth ? `enabled (user=${config.auth.username})` : 'DISABLED',
   };
 }

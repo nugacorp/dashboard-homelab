@@ -213,6 +213,16 @@ HERMES_CHAT_TIMEOUT_MS=60000
 UPTIME_KUMA_URL=http://10.77.0.20:3001
 UPTIME_KUMA_API_KEY=<Kuma API key, used only for GET /metrics>
 
+NETWORK_DNS_SERVER=192.168.1.100
+NETWORK_LOCAL_DOMAIN=localdomain
+NETWORK_GATEWAY_IP=192.168.1.1
+
+# Official local UniFi Network API. Keep the key backend-only.
+UNIFI_API_URL=https://192.168.1.1/proxy/network/integration
+UNIFI_API_KEY=<UniFi API key>
+UNIFI_CA_CERT_PATH=/etc/nuga-home/unifi-ca.pem
+UNIFI_TLS_SERVERNAME=unifi.local
+
 DASHBOARD_USERNAME=ramiro
 DASHBOARD_PASSWORD_HASH=<from npm run hash-password>
 SESSION_SECRET=<from openssl rand>
@@ -315,7 +325,8 @@ hashed.
 Expected on a correct install: Overview shows the three nodes with real CPU,
 memory and disk; VMs lists 100 / 110 / 120; Smart Home reports the Home
 Assistant version and entity counts with "No hay dispositivos configurados";
-Network, UniFi, Starlink, Cameras, Energy and Logs show `NOT CONFIGURED`.
+Network and UniFi show real read-only data when configured; Starlink,
+Cameras, Energy and Logs remain explicitly `NOT CONFIGURED` until a real source exists.
 
 ## 7. Add it to Uptime Kuma
 
