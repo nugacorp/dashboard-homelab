@@ -156,4 +156,12 @@ describe('no write path to the upstreams', () => {
     expect(code).not.toMatch(/method:\s*['"](POST|PUT|DELETE|PATCH)['"]/);
     expect(code).not.toMatch(/callService|\/api\/services\//);
   });
+
+  it('the UniFi service issues GET only and exposes no action paths', () => {
+    const service = productionFiles.find(({ path: p }) => p === 'server/services/unifi.ts');
+    expect(service).toBeDefined();
+    const code = stripComments(service!.source);
+    expect(code).not.toMatch(/method:\s*['"](POST|PUT|DELETE|PATCH)['"]/);
+    expect(code).not.toMatch(/\/actions|pending-devices|hotspot\/vouchers/);
+  });
 });

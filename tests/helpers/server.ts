@@ -37,7 +37,12 @@ export type Handler = (req: IncomingMessage, res: ServerResponse) => void;
 export interface FakeUpstream {
   url: string;
   /** Paths that were requested, in order. Useful to assert we only ever GET. */
-  requests: Array<{ method: string; url: string; authorization: string | undefined }>;
+  requests: Array<{
+    method: string;
+    url: string;
+    authorization: string | undefined;
+    xApiKey: string | undefined;
+  }>;
   close: () => Promise<void>;
 }
 
@@ -53,6 +58,10 @@ export async function startFakeUpstream(
       method: req.method ?? 'GET',
       url: req.url ?? '',
       authorization: req.headers.authorization,
+      xApiKey:
+        typeof req.headers['x-api-key'] === 'string'
+          ? req.headers['x-api-key']
+          : undefined,
     });
 
     const key = req.url ?? '';
@@ -85,6 +94,10 @@ export async function startFailingUpstream(status: number): Promise<FakeUpstream
       method: req.method ?? 'GET',
       url: req.url ?? '',
       authorization: req.headers.authorization,
+      xApiKey:
+        typeof req.headers['x-api-key'] === 'string'
+          ? req.headers['x-api-key']
+          : undefined,
     });
     res.writeHead(status, { 'content-type': 'application/json' });
     // Deliberately include a secret-looking string to prove we never echo bodies.

@@ -57,7 +57,7 @@ export function toUpstreamError(err: unknown, label: string): UpstreamError {
         return new UpstreamError(
           'UPSTREAM_TLS',
           `${label} TLS certificate could not be verified (${code}). ` +
-            'Install the cluster CA and set PVE_CA_CERT_PATH / PVE_TLS_SERVERNAME.',
+            'Configure the integration CA certificate and TLS server name.',
         );
       }
       if (['ECONNREFUSED', 'EHOSTUNREACH', 'ENETUNREACH', 'ENOTFOUND', 'EAI_AGAIN', 'ECONNRESET'].includes(code)) {

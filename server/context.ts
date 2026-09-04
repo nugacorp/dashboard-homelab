@@ -9,8 +9,10 @@ import type { AppConfig } from './config.js';
 import { registerSecret, type Logger } from './logger.js';
 import { HermesService } from './services/hermes.js';
 import { HomeAssistantService } from './services/homeAssistant.js';
+import { NetworkService } from './services/network.js';
 import { ProxmoxService } from './services/proxmox.js';
 import { UptimeKumaService } from './services/uptimeKuma.js';
+import { UnifiService } from './services/unifi.js';
 
 export interface ServerContext {
   config: AppConfig;
@@ -19,6 +21,8 @@ export interface ServerContext {
   homeAssistant: HomeAssistantService | null;
   hermes: HermesService | null;
   uptimeKuma: UptimeKumaService | null;
+  network: NetworkService | null;
+  unifi: UnifiService | null;
   startedAt: number;
 }
 
@@ -28,6 +32,7 @@ export function createContext(config: AppConfig, logger: Logger): ServerContext 
   registerSecret(config.homeAssistant?.token);
   registerSecret(config.hermes?.apiKey);
   registerSecret(config.uptimeKumaApiKey);
+  registerSecret(config.unifi?.apiKey);
   registerSecret(config.auth?.sessionSecret);
   registerSecret(config.auth?.passwordHash);
 
@@ -52,6 +57,16 @@ export function createContext(config: AppConfig, logger: Logger): ServerContext 
           config.uptimeKumaUrl,
           config.uptimeKumaApiKey,
           config.upstreamTimeoutMs,
+        )
+      : null,
+    network: config.network
+      ? new NetworkService(config.network, config.upstreamTimeoutMs)
+      : null,
+    unifi: config.unifi
+      ? new UnifiService(
+          config.unifi,
+          config.upstreamTimeoutMs,
+          logger,
         )
       : null,
     startedAt: Date.now(),

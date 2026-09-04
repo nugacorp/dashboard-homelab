@@ -52,6 +52,8 @@ export const Sidebar: React.FC = () => {
     vms,
     containers,
     homeAssistant,
+    network,
+    unifi,
     ready,
     isMobileMenuOpen,
     setIsMobileMenuOpen,
@@ -68,8 +70,30 @@ export const Sidebar: React.FC = () => {
     { page: 'proxmox', label: 'Proxmox Cluster', icon: Server, badge: count(nodes.data?.length) },
     { page: 'vms', label: 'Virtual Machines', icon: Cpu, badge: count(vms.data?.length) },
     { page: 'containers', label: 'Contenedores LXC', icon: Layers, badge: count(containers.data?.length) },
-    { page: 'network', label: 'Red', icon: Network, badge: 'n/c', muted: true },
-    { page: 'unifi', label: 'UniFi', icon: Wifi, badge: 'n/c', muted: true },
+    {
+      page: 'network',
+      label: 'Red',
+      icon: Network,
+      badge:
+        network.phase === 'ok'
+          ? 'OK'
+          : network.phase === 'error'
+            ? '!'
+            : 'n/c',
+      muted: network.phase !== 'ok',
+    },
+    {
+      page: 'unifi',
+      label: 'UniFi',
+      icon: Wifi,
+      badge:
+        unifi.phase === 'ok'
+          ? String(unifi.data?.devices.length ?? 0)
+          : unifi.phase === 'error'
+            ? '!'
+            : 'n/c',
+      muted: unifi.phase !== 'ok',
+    },
     { page: 'starlink', label: 'Starlink', icon: Radio, badge: 'n/c', muted: true },
     {
       page: 'smart-home',

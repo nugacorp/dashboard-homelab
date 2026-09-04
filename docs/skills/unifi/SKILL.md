@@ -1,7 +1,7 @@
 ---
 name: nuga-home-unifi
 description: Operación segura de UniFi/UCG Max para NUGA HOME: Starlink, WAN/LAN, DHCP, DNS, Zone-Based Firewall, VLANs, mDNS, Protect y API oficial. Usar para diagnóstico y planificación; cambios de red de alto impacto requieren aprobación explícita.
-version: 1.0.0
+version: 1.1.0
 author: Ramiro
 platforms: [linux]
 metadata:
@@ -47,7 +47,7 @@ No usar blogs, videos o foros como autoridad principal para cambios de producci�
 Objetivo de LAN:
 - Red: `192.168.1.0/24`
 - Gateway UCG Max: `192.168.1.1`
-- DHCP sugerido: `192.168.1.200-192.168.1.230`
+- DHCP activo: `192.168.1.200-192.168.1.230`
 - Infraestructura crítica fuera del pool DHCP.
 
 IPs estáticas verificadas:
@@ -60,8 +60,10 @@ IPs estáticas verificadas:
 - VM102 `hermes-team-lab` → `192.168.1.151`
 - VM100 `home-assistant` → `192.168.1.158`
 
-Pendientes de verificar:
-- NUGA EDGE / Raspberry Pi → históricamente `192.168.1.236`
+Adicional verificado:
+- NUGA EDGE / Raspberry Pi → `192.168.1.236`
+
+Pendiente de verificar:
 - VM130 `chr-lab`
 
 ## Regla crítica para Starlink Bypass
@@ -92,8 +94,10 @@ Nunca configurar WAN y LAN del UCG dentro de `192.168.1.0/24` al mismo tiempo.
 - Clientes normales: DHCP.
 - No crear reservas DHCP redundantes para hosts ya estáticos.
 - Para IP estática fuera del pool, crear DNS Host (A/AAAA) si se desea resolución local.
-- Tras el cutover, mantener inicialmente el UCG como DNS.
-- Migrar clientes a `nuga-dns-01` en fase separada después de validar el servicio.
+- DNS LAN activo: Technitium `nuga-dns-01` → `192.168.1.100`.
+- DHCP del UCG entrega `192.168.1.100` como DNS.
+- Zona autoritativa local: `localdomain`.
+- El propio LXC DNS mantiene resolver de SO externo para evitar dependencia circular.
 
 ## Zone-Based Firewall
 Zonas integradas:
@@ -180,10 +184,13 @@ Para Network, usar la documentación exacta de la versión instalada en:
 
 En NUGA HOME:
 - API = observación.
+- Integración oficial local activa con Network 10.6.101.
 - API key backend-only.
-- Preferir API oficial a endpoints legacy/no documentados.
-- Empezar read-only.
-- Escrituras en fase separada con allow-list y auditoría.
+- TLS verificado con certificado UCG y `unifi.local`.
+- Backend con allow-list estricta de endpoints GET.
+- Datos reales: sitio, dispositivos, estadísticas, clientes, redes/VLANs, WiFi y WANs.
+- No existen POST/PUT/PATCH/DELETE ni `/actions` en `UnifiService`.
+- Cualquier control futuro será una fase separada con autorización, allow-list y auditoría.
 
 ## Network 10.6.101
 Versión observada en la consola.
@@ -225,14 +232,11 @@ Validar:
 - ausencia de doble DHCP
 
 Después:
-- NUGA EDGE
 - chr-lab
-- DNS interno
 - IPv6
 - VLANs/ZBF
 - IDS/IPS
 - Protect/cámaras
-- API UniFi → NUGA HOME
 
 ## Referencias oficiales base
 - Ubiquiti Help Center — Zone-Based Firewalls in UniFi
@@ -252,4 +256,4 @@ Después:
 - Ubiquiti Community — Security Advisory Bulletin 067
 - Starlink Help Center — Using a Third-Party Router with Starlink
 
-Última revisión documental: 2026-09-03.
+Última revisión documental: 2026-09-04.

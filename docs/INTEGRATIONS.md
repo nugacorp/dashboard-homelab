@@ -6,7 +6,7 @@ UI shows when it is absent.
 Common rules:
 
 - Every upstream call has a hard timeout and a response size cap.
-- Proxmox and Home Assistant are **read-only**: `GET` and nothing else. The only
+- Proxmox, Home Assistant and UniFi Network are **read-only**: `GET` and nothing else. The only
   outbound `POST` in the whole backend is a Hermes chat turn, which is a request
   for a reply, not a change to infrastructure.
 - Payloads are validated with zod and mapped to DTOs in `shared/api.ts`.
@@ -217,14 +217,78 @@ current state; it does not replace it.
 
 ---
 
+
+## Network / DNS — connected, read-only
+
+**Config:** `NETWORK_DNS_SERVER`, `NETWORK_LOCAL_DOMAIN`,
+`NETWORK_GATEWAY_IP`
+
+The backend observes the LAN without controlling it.
+
+### Sources consumed
+
+- Direct DNS queries to Technitium.
+- TCP/443 reachability probe to the configured gateway.
+- Authoritative lookups for the known NUGA HOME inventory in `localdomain`.
+
+### Exposed as
+
+`GET /api/network/status`
+
+The UI shows the configured gateway, Technitium resolver, external DNS
+resolution, DNS latency and the current IPv4 address returned for each known
+local hostname.
+
+No DNS record, DHCP setting, gateway setting or network configuration can be
+changed from this integration.
+
+---
+
+## UniFi Network — connected, official local API, read-only
+
+**Config:** `UNIFI_API_URL`, `UNIFI_API_KEY`, `UNIFI_CA_CERT_PATH`,
+`UNIFI_TLS_SERVERNAME`
+
+Current validated application: **UniFi Network 10.6.101** on the Cloud Gateway
+Max.
+
+TLS verification remains enabled. The UCG certificate is trusted explicitly and
+validated against `unifi.local`; the application never uses `-k`,
+`rejectUnauthorized: false` or `NODE_TLS_REJECT_UNAUTHORIZED`.
+
+### Upstream endpoints consumed
+
+- `GET /v1/info`
+- `GET /v1/sites`
+- `GET /v1/sites/{siteId}/devices`
+- `GET /v1/sites/{siteId}/devices/{deviceId}/statistics/latest`
+- `GET /v1/sites/{siteId}/clients`
+- `GET /v1/sites/{siteId}/networks`
+- `GET /v1/sites/{siteId}/wifi/broadcasts`
+- `GET /v1/sites/{siteId}/wans`
+
+### Exposed as
+
+`GET /api/unifi/summary`
+
+The dashboard exposes the actual application version, local site, adopted
+devices, client count/details, networks/VLANs, WAN inventory, WiFi broadcast
+count and available device CPU/RAM/uplink statistics.
+
+The UniFi API itself includes write-capable operations, but NUGA HOME does not
+implement them. `UnifiService` has a closed GET-only path allow-list and tests
+fail if POST, PUT, PATCH, DELETE or action paths are introduced.
+
+The API key is backend-only and is registered with the log redactor.
+
+---
+
 ## Not integrated
 
 Rendered with `IntegrationNotConfigured`, never with sample data.
 
 | Section | State | Blocker |
 | --- | --- | --- |
-| Network | NOT CONFIGURED | No network controller with an API |
-| UniFi | NOT CONFIGURED | No UniFi hardware deployed |
 | Starlink | NOT CONFIGURED | No gRPC telemetry collector |
 | Cameras / NVR | NOT CONFIGURED | No cameras, no Frigate, no Protect, no Coral TPU |
 | Energy | NOT CONFIGURED | No power meter, no monitored UPS, no solar |

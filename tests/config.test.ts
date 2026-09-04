@@ -13,6 +13,8 @@ describe('loadConfig', () => {
     expect(config.hermesEnabled).toBe(false);
     expect(config.uptimeKumaUrl).toBeNull();
     expect(config.uptimeKumaApiKey).toBeNull();
+    expect(config.network).toBeNull();
+    expect(config.unifi).toBeNull();
     expect(config.auth).toBeNull();
     expect(config.port).toBe(8080);
   });
@@ -131,6 +133,32 @@ describe('loadConfig', () => {
 
     expect(config.upstreamTimeoutMs).toBe(9000);
     expect(config.hermesChatTimeoutMs).toBe(45000);
+  });
+
+  it('rejects a half-configured UniFi integration', () => {
+    expect(() =>
+      loadConfig({
+        ...base,
+        UNIFI_API_URL: 'https://192.168.1.1/proxy/network/integration',
+      }),
+    ).toThrow(/UNIFI_API_KEY/);
+  });
+
+  it('accepts a complete UniFi integration without exposing the key', () => {
+    const config = loadConfig({
+      ...base,
+      UNIFI_API_URL: 'https://192.168.1.1/proxy/network/integration/',
+      UNIFI_API_KEY: 'unifi-test-secret',
+      UNIFI_TLS_SERVERNAME: 'unifi.local',
+    });
+
+    expect(config.unifi?.baseUrl).toBe(
+      'https://192.168.1.1/proxy/network/integration',
+    );
+    expect(config.unifi?.tlsServername).toBe('unifi.local');
+
+    const rendered = JSON.stringify(describeConfig(config));
+    expect(rendered).not.toContain('unifi-test-secret');
   });
 
   it('requires a strong session secret and an scrypt hash', () => {

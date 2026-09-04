@@ -41,6 +41,8 @@ const ENVELOPE_ENDPOINTS = [
   '/uptime-kuma/status',
   '/uptime-kuma/monitors',
   '/uptime-kuma/summary',
+  '/network/status',
+  '/unifi/summary',
 ];
 
 let running: RunningApp | null = null;
