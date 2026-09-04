@@ -14,7 +14,7 @@ import { readFileSync } from 'node:fs';
 import { isIP } from 'node:net';
 import { z } from 'zod';
 
-export const APP_VERSION = '1.3.0';
+export const APP_VERSION = '1.4.0';
 
 const trimmed = z.string().trim();
 
